@@ -16,6 +16,9 @@ A personal portfolio tracker for the Pakistan Stock Exchange (PSX). The full pro
 - **Write tests for all money maths.** Fees (slabs, FED, minimums), FIFO lot matching, average cost, realized/unrealized P&L, CGT, dividends (gross/WHT/net), cash ledger balances, zakat and purification. Tests live next to the code as `*.test.ts` and run with `npm test` (Vitest). Use exact decimal handling, never float drift on rupee amounts.
 - **Never commit secrets.** Real keys go only in `.env.local` (git-ignored). `.env.example` holds names and placeholders only. Never print key values in logs, commits or chat.
 - This is Next.js 16: middleware is now `src/proxy.ts`. Check `node_modules/next/dist/docs/` before relying on older Next.js APIs.
+- `cacheComponents` and `partialPrefetching` are on. Anything that reads the session, cookies, `params` or `searchParams` must sit inside a `<Suspense>` boundary; keep the page shell (headings, nav) outside it so it prerenders. `requireUser()` calls `connection()` because token checks read the clock.
+- After a write, call `revalidatePath("/<section>", "layout")` so every cached page under it refreshes, and give forms built from saved data a `key` (e.g. `updated_at`) so they remount with fresh values.
+- Don't call `redirect()` in a page that can prerender; use `next.config.ts` redirects or the proxy.
 
 ## Stack (PLAN.md §6)
 
@@ -36,7 +39,10 @@ Drizzle connects with `DATABASE_URL` as a privileged Postgres role and **bypasse
 - **User-facing reads and writes** (pages, server components, server actions, route handlers acting for a user) go through **supabase-js with the user's session** (`src/lib/supabase/server.ts` or `client.ts`), so RLS always applies.
 - **Drizzle is only for** migrations and trusted server-side jobs (price poller, end-of-day job, notice poller, import pipeline). Its code lives in `src/db/` and must never be imported from client components or user-request code paths.
 - The secret key (`SUPABASE_SECRET_KEY`) is server-only, same restriction as Drizzle.
-- Every user-owned table has RLS enabled with policies scoped to `auth.uid()` in the same migration that creates it.
+- Every user-owned table has RLS enabled with policies scoped to `auth.uid()` in the same migration that creates it. Policies live next to the table in `src/db/schema.ts` (`pgPolicy`); use `(select auth.uid())`, scope them `to authenticated`, and qualify columns in subqueries.
+- Multi-row user writes go through `SECURITY INVOKER` Postgres functions called with `supabase.rpc()` (see `drizzle/0001_functions_and_seed.sql`), so they are atomic and RLS still applies.
+- Every new table or policy gets a case in `scripts/test-rls.mjs`; run `npm run test:rls` before committing schema changes.
+- Schema changes: edit `src/db/schema.ts` → `npm run db:generate` → review the SQL → `npm run db:migrate`. Triggers, functions and seed data go in a custom migration (`npx drizzle-kit generate --custom --name <name>`).
 
 ## Database connections
 
@@ -81,3 +87,7 @@ A user owns portfolios; a portfolio owns transactions. **Holdings, lots and real
 - `npm run dev`: dev server
 - `npm run build`, `npm run lint`, `npm test`
 - `npm run db:generate` / `npm run db:migrate`: Drizzle migrations (use `DIRECT_URL`)
+- `npm run test:rls`: RLS isolation test against the live project (creates and deletes two throwaway users)
+- `npm run db:inspect`: read-only check of RLS status, policy counts and seed data
+- `npm run dev-user -- create|delete`: confirmed local test login, stored in `.env.local` as `DEV_USER_EMAIL` / `DEV_USER_PASSWORD`
+- `npm run check:supabase`: verify `.env.local` keys and connections

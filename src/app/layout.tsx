@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PSX Tracker",
+  title: { default: "PSX Tracker", template: "%s · PSX Tracker" },
   description: "Personal PSX portfolio tracker",
 };
 

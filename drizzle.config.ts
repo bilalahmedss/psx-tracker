@@ -14,6 +14,8 @@ export default defineConfig({
   dialect: "postgresql",
   dbCredentials: { url },
   schemaFilter: ["public"],
+  // Supabase manages its own roles (authenticated, anon, service_role).
+  entities: { roles: { provider: "supabase" } },
   strict: true,
   verbose: true,
 });
