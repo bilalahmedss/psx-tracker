@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { PoliteClient } from "../http";
-import { QUOTE_BATCH_SIZE, createEodhdSource, fromTicker, parseEod, parseRealtime, parseSymbols, toTicker } from "./eodhd";
+import { BudgetExceededError, createCallBudget, memoryBudgetStore } from "../budget";
+import { QUOTE_BATCH_SIZE, createEodhdSource, eodhdCallCost, fromTicker, parseEod, parseRealtime, parseSymbols, readQuoteMode, toTicker } from "./eodhd";
 
-// Sample payloads shaped like EODHD's documented responses. They have not yet
-// been checked against the live API; re-capture them once an API key is set up.
+// Sample payloads shaped like EODHD's documented responses; the free-plan "NA"
+// quote below was captured from the live API.
 const REALTIME_ONE = {
   code: "OGDC.KAR",
   timestamp: 1793860200,
@@ -48,6 +49,12 @@ describe("parseRealtime", () => {
     expect(quotes.map((q) => q.symbol)).toEqual(["OGDC"]);
   });
 
+  it("skips the free plan's quotes, which only carry a previous close", () => {
+    // Shape returned by the live API on the free plan, 5 Nov 2026.
+    const free = { code: "MEBL.KAR", timestamp: "NA" as const, gmtoffset: 0, open: "NA" as const, high: "NA" as const, low: "NA" as const, close: "NA" as const, volume: "NA" as const, previousClose: 538.48, change: "NA" as const, change_p: "NA" as const };
+    expect(parseRealtime([free])).toEqual([]);
+  });
+
   it("handles a missing previous close", () => {
     const [q] = parseRealtime({ ...REALTIME_ONE, previousClose: "NA" });
     expect(q.change).toBeNull();
@@ -79,6 +86,24 @@ describe("parseEod", () => {
   });
 });
 
+describe("eodhdCallCost", () => {
+  it("charges per ticker, as measured on the live API", () => {
+    expect(eodhdCallCost("quotes", 5)).toBe(5);
+    expect(eodhdCallCost("history", 3)).toBe(3);
+    expect(eodhdCallCost("history")).toBe(1);
+    expect(eodhdCallCost("symbols")).toBe(1);
+  });
+});
+
+describe("readQuoteMode", () => {
+  it("defaults to end of day (the free plan has no PSX intraday quotes)", () => {
+    expect(readQuoteMode(undefined)).toBe("eod");
+    expect(readQuoteMode(" ")).toBe("eod");
+    expect(readQuoteMode("REALTIME")).toBe("realtime");
+    expect(() => readQuoteMode("live")).toThrow(/EODHD_QUOTE_MODE/);
+  });
+});
+
 describe("createEodhdSource", () => {
   function fakeClient(reply: (url: URL) => unknown) {
     const urls: URL[] = [];
@@ -91,45 +116,65 @@ describe("createEodhdSource", () => {
     } as unknown as PoliteClient;
     return { client, urls };
   }
+  const NOW = () => new Date("2026-11-05T09:00:00Z");
+  const budgetOf = (limit = 15, used = 0) => {
+    const store = memoryBudgetStore(used ? { "eodhd:2026-11-05": used } : {});
+    return { store, budget: createCallBudget(store, "eodhd", limit, NOW) };
+  };
 
-  it("requires an API key", () => {
-    expect(() => createEodhdSource("")).toThrow(/EODHD_API_KEY/);
+  it("requires an API key and a budget", () => {
+    const { budget } = budgetOf();
+    expect(() => createEodhdSource("", { budget })).toThrow(/EODHD_API_KEY/);
+    expect(() => createEodhdSource("k", {} as never)).toThrow(/budget/);
   });
 
-  it("is marked delayed", () => {
-    const s = createEodhdSource("k", fakeClient(() => []).client);
-    expect(s.delayed).toBe(true);
+  it("is metered, and end of day by default", () => {
+    const { budget } = budgetOf();
+    const s = createEodhdSource("k", { budget, client: fakeClient(() => []).client });
+    expect(s.metered).toBe(true);
+    expect(s.quoteMode).toBe("eod");
+    expect(createEodhdSource("k", { budget, mode: "realtime", client: fakeClient(() => []).client }).quoteMode).toBe("delayed");
+    expect(s.getEodBulk).toBeUndefined();
   });
 
-  it("batches real-time quotes", async () => {
+  it("batches real-time quotes and reserves one call per ticker", async () => {
     const symbols = Array.from({ length: QUOTE_BATCH_SIZE + 5 }, (_, i) => `S${i}`);
     const { client, urls } = fakeClient((url) => {
       const codes = [url.pathname.split("/").pop()!, ...(url.searchParams.get("s")?.split(",") ?? [])];
       return codes.map((code) => ({ ...REALTIME_ONE, code }));
     });
-    const quotes = await createEodhdSource("k", client).getQuotes(symbols);
+    const { store, budget } = budgetOf(100);
+    const quotes = await createEodhdSource("k", { budget, client, mode: "realtime" }).getQuotes(symbols);
     expect(urls).toHaveLength(2);
     expect(urls[0].pathname).toBe("/api/real-time/S0.KAR");
     expect(urls[0].searchParams.get("s")!.split(",")).toHaveLength(QUOTE_BATCH_SIZE - 1);
     expect(urls[0].searchParams.get("api_token")).toBe("k");
     expect(urls[0].searchParams.get("fmt")).toBe("json");
     expect(quotes.map((q) => q.symbol)).toEqual(symbols);
+    expect(store.counts["eodhd:2026-11-05"]).toBe(QUOTE_BATCH_SIZE + 5);
   });
 
-  it("requests daily history with a date range", async () => {
+  it("never sends a request the budget cannot cover", async () => {
+    const { client, urls } = fakeClient(() => [REALTIME_ONE]);
+    const { store, budget } = budgetOf(15, 13);
+    const s = createEodhdSource("k", { budget, client, mode: "realtime" });
+    await expect(s.getQuotes(["A", "B", "C"])).rejects.toBeInstanceOf(BudgetExceededError);
+    expect(urls).toHaveLength(0);
+    expect(store.counts["eodhd:2026-11-05"]).toBe(13);
+    await s.getDailyHistory("OGDC", "2026-11-01", "2026-11-05");
+    await s.getDailyHistory("MEBL", "2026-11-01", "2026-11-05");
+    await expect(s.listSymbols()).rejects.toBeInstanceOf(BudgetExceededError);
+    expect(urls).toHaveLength(2);
+    expect(store.counts["eodhd:2026-11-05"]).toBe(15);
+  });
+
+  it("requests daily history with a date range for one call", async () => {
     const { client, urls } = fakeClient(() => []);
-    await createEodhdSource("k", client).getDailyHistory("ogdc", "2025-01-01", "2026-11-05");
+    const { store, budget } = budgetOf();
+    await createEodhdSource("k", { budget, client }).getDailyHistory("ogdc", "2025-01-01", "2026-11-05");
     expect(urls[0].pathname).toBe("/api/eod/OGDC.KAR");
     expect(urls[0].searchParams.get("from")).toBe("2025-01-01");
     expect(urls[0].searchParams.get("to")).toBe("2026-11-05");
-  });
-
-  it("uses the bulk endpoint for end-of-day", async () => {
-    const { client, urls } = fakeClient(() => [
-      { code: "OGDC", exchange_short_name: "KAR", date: "2026-11-05", open: 230, high: 233, low: 229, close: 232, volume: 10 },
-    ]);
-    const candles = await createEodhdSource("k", client).getEodBulk!("2026-11-05");
-    expect(urls[0].pathname).toBe("/api/eod-bulk-last-day/KAR");
-    expect(candles[0]).toMatchObject({ symbol: "OGDC", close: "232" });
+    expect(store.counts["eodhd:2026-11-05"]).toBe(1);
   });
 });

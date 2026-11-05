@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
+import { PriceRefresh } from "@/components/price-refresh";
 import { Skeleton } from "@/components/skeleton";
 import { buttonVariants } from "@/components/ui/button";
 import { getPortfolioBook } from "@/lib/portfolio/book";
@@ -65,6 +66,7 @@ async function PortfolioHeader({ params }: { params: Promise<{ id: string }> }) 
           <SettingsLink portfolioId={id} />
         </div>
       </div>
+      <PriceRefresh />
       <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-[repeat(auto-fill,minmax(10rem,1fr))]">
         {stats.map((s) => (
           <div key={s.label} className="bg-card px-3 py-2.5">

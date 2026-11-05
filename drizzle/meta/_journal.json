@@ -57,6 +57,27 @@
       "when": 1793855676131,
       "tag": "0007_stale_trigger_and_import",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793877274854,
+      "tag": "0008_api_usage",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793877413650,
+      "tag": "0009_end_of_day_prices",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793877541848,
+      "tag": "0010_market_data_state",
+      "breakpoints": true
     }
   ]
 }

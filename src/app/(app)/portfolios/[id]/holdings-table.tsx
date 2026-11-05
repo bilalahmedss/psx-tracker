@@ -11,6 +11,8 @@ export type HoldingRow = {
   avgCost: string;
   price: string | null;
   delayed: boolean;
+  /** Price is the last daily close, not an intraday quote. */
+  endOfDay: boolean;
   marketValue: string | null;
   unrealized: string;
   unrealizedPct: string;
@@ -87,7 +89,9 @@ export function HoldingsTable({ portfolioId, rows }: { portfolioId: string; rows
               <td className="px-3 py-2 text-right tabular-nums money">{r.avgCost}</td>
               <td className="px-3 py-2 text-right tabular-nums money">
                 {r.price ?? <span className="text-muted-foreground">No price</span>}
-                {r.price && r.delayed ? <span className="ml-1 text-[10px] text-muted-foreground">delayed</span> : null}
+                {r.price && (r.delayed || r.endOfDay) ? (
+                  <span className="ml-1 text-[10px] text-muted-foreground">{r.endOfDay ? "close" : "delayed"}</span>
+                ) : null}
               </td>
               <td className="px-3 py-2 text-right tabular-nums money">{r.marketValue ?? "-"}</td>
               <td className={`px-3 py-2 text-right tabular-nums money ${toneClass[r.unrealizedTone]}`}>

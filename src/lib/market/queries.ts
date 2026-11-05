@@ -19,6 +19,7 @@ export type QuoteRow = {
   asOf: string;
   source: string;
   delayed: boolean;
+  endOfDay: boolean;
 };
 
 type Row = {
@@ -32,13 +33,14 @@ type Row = {
   as_of: string;
   source: string;
   delayed: boolean;
+  end_of_day: boolean;
   securities: { name: string; sector: string | null; is_shariah: boolean } | null;
 };
 
 export async function getLatestQuotes(supabase: SupabaseClient): Promise<QuoteRow[]> {
   const { data, error } = await supabase
     .from("prices_latest")
-    .select("symbol, price, change, change_pct, high, low, volume, as_of, source, delayed, securities(name, sector, is_shariah)")
+    .select("symbol, price, change, change_pct, high, low, volume, as_of, source, delayed, end_of_day, securities(name, sector, is_shariah)")
     .order("symbol")
     .overrideTypes<Row[], { merge: false }>();
   if (error) throw new Error(`Could not load prices: ${error.message}`);
@@ -56,6 +58,7 @@ export async function getLatestQuotes(supabase: SupabaseClient): Promise<QuoteRo
     asOf: r.as_of,
     source: r.source,
     delayed: r.delayed,
+    endOfDay: r.end_of_day,
   }));
 }
 

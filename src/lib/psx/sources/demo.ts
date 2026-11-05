@@ -91,6 +91,9 @@ export function createDemoSource(cal: CalendarData, now: () => Date = () => new 
     label: "Demo data",
     delayed: false,
     delayNote: "Simulated prices for testing; not real market data.",
+    quoteMode: "live",
+    metered: false,
+    callCost: () => 0,
     async listSymbols(): Promise<SymbolInfo[]> {
       return DEMO_SYMBOLS.map((s) => ({
         symbol: s.symbol,

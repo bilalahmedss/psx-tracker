@@ -301,6 +301,8 @@ export const pricesLatest = pgTable(
     asOf: timestamp("as_of", { withTimezone: true }).notNull(),
     source: text("source").notNull(),
     delayed: boolean("delayed").notNull().default(false),
+    /** The price is a daily close (free EODHD plan has no intraday quotes for PSX). */
+    endOfDay: boolean("end_of_day").notNull().default(false),
     updatedAt: updatedAt(),
   },
   () => [marketRead("prices_latest")],
@@ -348,6 +350,53 @@ export const jobRuns = pgTable(
     uniqueIndex("job_runs_one_running").on(t.job).where(sql`status = 'running'`),
     marketRead("job_runs"),
   ],
+).enableRLS();
+
+/**
+ * Metered provider calls per day (UTC, matching the provider's reset). Jobs reserve
+ * calls here before each request, so the daily limit can never be overshot.
+ * Readable by signed-in users so pages can show "daily limit reached".
+ */
+export const apiUsage = pgTable(
+  "api_usage",
+  {
+    provider: text("provider").notNull(),
+    day: date("day").notNull(),
+    calls: integer("calls").notNull().default(0),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.provider, t.day] }),
+    check("api_usage_calls_nonneg", sql`${t.calls} >= 0`),
+    marketRead("api_usage"),
+  ],
+).enableRLS();
+
+/**
+ * What the price refresh job last did, one row per job ("prices"). Written by jobs
+ * only; read by pages for "Updated HH:MM", cooldowns and the daily-limit message
+ * without exposing which symbols other users hold.
+ */
+export const marketDataState = pgTable(
+  "market_data_state",
+  {
+    job: text("job").primaryKey(),
+    source: text("source").notNull(),
+    /** live | delayed | eod */
+    quoteMode: text("quote_mode").notNull(),
+    /** Symbols in the refresh scope at the last run; one refresh costs this many calls on EODHD. */
+    trackedCount: integer("tracked_count").notNull().default(0),
+    /** Last run that spent calls (scheduled or manual). Drives the interval and the cooldown. */
+    lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+    /** Last run that stored prices. */
+    lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+    /** End-of-day mode: the trading day whose closes every tracked symbol has. */
+    dataDay: date("data_day"),
+    symbolsSyncedAt: timestamp("symbols_synced_at", { withTimezone: true }),
+    message: text("message"),
+    updatedAt: updatedAt(),
+  },
+  () => [marketRead("market_data_state")],
 ).enableRLS();
 
 // ---------- portfolios ----------

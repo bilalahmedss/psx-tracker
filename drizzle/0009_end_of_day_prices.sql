@@ -1,0 +1,1 @@
+ALTER TABLE "prices_latest" ADD COLUMN "end_of_day" boolean DEFAULT false NOT NULL;

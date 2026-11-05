@@ -17,7 +17,8 @@
     "db:inspect": "node --env-file-if-exists=.env.local scripts/db-inspect.mjs",
     "dev-user": "node --env-file-if-exists=.env.local scripts/dev-user.mjs",
     "jobs:dev": "node --env-file-if-exists=.env.local scripts/jobs-dev.mjs",
-    "job": "node --env-file-if-exists=.env.local scripts/jobs-dev.mjs once"
+    "job": "node --env-file-if-exists=.env.local scripts/jobs-dev.mjs once",
+    "eodhd:probe": "node --env-file-if-exists=.env.local scripts/eodhd-probe.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

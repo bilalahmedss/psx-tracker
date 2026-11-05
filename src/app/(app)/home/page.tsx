@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { Explain } from "@/components/explain";
+import { PriceRefresh } from "@/components/price-refresh";
 import { Skeleton } from "@/components/skeleton";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -84,12 +85,7 @@ async function Dashboard({ searchParams }: { searchParams: Promise<Record<string
               </span>
             </span>
           </div>
-          {t.demo || t.delayed ? (
-            <p className="text-xs text-muted-foreground">
-              {t.demo ? "Prices are demo data. " : ""}
-              {t.delayed ? "Prices are delayed 15–20 minutes." : ""}
-            </p>
-          ) : null}
+          <PriceRefresh />
         </div>
         {data.selected !== "all" ? (
           <Link href={`/portfolios/${data.selected}`} className={buttonVariants({ variant: "outline", size: "sm" })}>

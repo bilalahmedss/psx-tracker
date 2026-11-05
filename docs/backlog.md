@@ -12,13 +12,15 @@ Known gaps and deliberate simplifications, to pick up later. Newest first within
 ## Market data and calendar
 
 - **Lunar holidays and Friday hours — to confirm** against the PSX notice (`market_holidays`, `STANDARD_HOURS` in `src/lib/psx/calendar.ts`).
-- **EODHD free plan (checked 5 Nov 2026):** 20 requests/day; daily history (`/eod`) works, but real-time quotes return "NA" for `.KAR` and the bulk end-of-day endpoint returns HTTP 423. The price job and `jobs:dev` would exhaust the quota within minutes. Before using EODHD: either upgrade, or add a daily request budget to the adapter and make the end-of-day job fall back to per-symbol `/eod` when bulk is unavailable.
-- **KSE-100 index** not fetched yet.
+- **EODHD free plan (checked 5 Nov 2026 with `npm run eodhd:probe`):** 20 calls/day, counted per ticker; `/user` is free. Real-time `.KAR` quotes return "NA" (only the previous close), so the app runs in end-of-day mode; history goes back one year; bulk end-of-day is refused. Handled by the daily budget and end-of-day mode (`docs/cron.md`). Still to confirm: what time EODHD publishes PSX closes (the 120-minute delay is a guess; check `market_data_state.message` after a few evenings).
+- **KSE-100 index:** `KSE100.INDX` works on the free plan (previous close only, 1 call). Not fetched yet; add it to the end-of-day refresh when the dashboard comparison is built.
+- **Switching back to demo** writes simulated closes into `prices`. The demo history was cleared on 5 Nov 2026 when EODHD went live; clear it again (`delete from prices` for the affected symbols) before switching back to a real source.
+- **/market** shows only refreshed symbols once EODHD is on (scope = holdings). A wider market view needs a paid plan or a slower rotation through other symbols.
 - **Production cron** needs a deployed app; steps in `docs/cron.md`.
 
 ## Dashboard
 
-- Chart history shows holdings at cost on days with no stored close (flagged "estimated"); needs real daily closes backfilled for held symbols.
+- Chart history shows holdings at cost on days with no stored close (flagged "estimated"). Held stocks now get one year of real closes from EODHD on their first refresh; older trades still fall back to cost.
 - Compare against KSE-100 (needs index data).
 - Resizable cards and multiple saved layouts (Stage 2).
 

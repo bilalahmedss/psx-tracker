@@ -45,6 +45,7 @@ async function Holdings({ params }: { params: Promise<{ id: string }> }) {
     avgCost: rs(h.avgCost),
     price: h.price ? rs(h.price) : null,
     delayed: quotes[h.symbol]?.delayed ?? false,
+    endOfDay: quotes[h.symbol]?.endOfDay ?? false,
     marketValue: h.marketValue ? rs(h.marketValue) : null,
     unrealized: signedRs(h.unrealized),
     unrealizedPct: pct(h.unrealizedPct),

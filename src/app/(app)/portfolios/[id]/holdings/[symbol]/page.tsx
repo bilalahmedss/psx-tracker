@@ -80,7 +80,8 @@ async function HoldingDetail({ params }: { params: Promise<{ id: string; symbol:
           <CardContent className="text-sm text-muted-foreground">
             {quote ? (
               <>
-                As of {formatPktAsOf(quote.asOf)} PKT{quote.delayed ? " · delayed 15–20 min" : ""}
+                {quote.endOfDay ? "Closing price, " : "As of "}
+                {formatPktAsOf(quote.asOf)} PKT{quote.delayed ? " · delayed 15–20 min" : ""}
                 {quote.source === "demo" ? " · demo data" : ""}
               </>
             ) : (

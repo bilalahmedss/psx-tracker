@@ -1,6 +1,6 @@
 // Local scheduler: calls the job endpoints on the running dev server, the same
 // way the production cron does. Start `npm run dev` first.
-//   npm run jobs:dev                 prices every minute (the job skips itself when the market is closed),
+//   npm run jobs:dev                 asks for prices every minute (the job decides if a refresh is due and within the daily limit),
 //                                    snapshots every 5 minutes (only rebuilds changed portfolios),
 //                                    eod once a day after 17:00 PKT on weekdays
 //   npm run job -- prices [--force]  run one job once

@@ -16,7 +16,7 @@ import { getPortfolio, type PortfolioDetail } from "./queries";
 export type TxnRow = EngineTxn & { note: string | null };
 export type DividendRow = EngineDividend & { shares: string | null; dps: string | null; note: string | null };
 export type CashEntryRow = EngineCashEntry;
-export type QuoteInfo = EnginePrice & { change: string | null; changePct: string | null; asOf: string; delayed: boolean; source: string };
+export type QuoteInfo = EnginePrice & { change: string | null; changePct: string | null; asOf: string; delayed: boolean; endOfDay: boolean; source: string };
 
 export type PortfolioBook = {
   portfolio: PortfolioDetail;
@@ -69,6 +69,7 @@ type QuoteDb = {
   change_pct: string | null;
   as_of: string;
   delayed: boolean;
+  end_of_day: boolean;
   source: string;
 };
 
@@ -134,13 +135,13 @@ export const getPortfolioBook = cache(async (portfolioId: string): Promise<Portf
     const [q, s] = await Promise.all([
       supabase
         .from("prices_latest")
-        .select("symbol, price, prev_close, change, change_pct, as_of, delayed, source")
+        .select("symbol, price, prev_close, change, change_pct, as_of, delayed, end_of_day, source")
         .in("symbol", symbols)
         .overrideTypes<QuoteDb[], { merge: false }>(),
       supabase.from("securities").select("symbol, name").in("symbol", symbols),
     ]);
     for (const r of q.data ?? []) {
-      quotes[r.symbol] = { price: r.price, prevClose: r.prev_close, change: r.change, changePct: r.change_pct, asOf: r.as_of, delayed: r.delayed, source: r.source };
+      quotes[r.symbol] = { price: r.price, prevClose: r.prev_close, change: r.change, changePct: r.change_pct, asOf: r.as_of, delayed: r.delayed, endOfDay: r.end_of_day, source: r.source };
     }
     for (const r of (s.data ?? []) as { symbol: string; name: string }[]) names[r.symbol] = r.name;
   }

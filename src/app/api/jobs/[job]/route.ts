@@ -6,10 +6,11 @@ import { rebuildSnapshots } from "@/jobs/snapshots";
 
 // Job endpoints, called by the scheduler (Supabase pg_cron + pg_net in production,
 // `npm run jobs:dev` locally). Protected by CRON_SECRET as a Bearer token.
-//   GET|POST /api/jobs/prices      refresh latest prices (skips when market closed)
+//   GET|POST /api/jobs/prices      refresh prices when due (see src/lib/psx/refresh-policy.ts)
+//   ?trigger=manual                (prices) the "Refresh prices" button: 5-minute cooldown, any time
 //   GET|POST /api/jobs/eod         end-of-day candles + symbol sync
 //   GET|POST /api/jobs/snapshots   rebuild daily value snapshots for changed portfolios
-//   ?force=1                       run even outside market hours (snapshots: rebuild all)
+//   ?force=1                       ignore timing rules, never the daily call limit (snapshots: rebuild all)
 //   ?date=YYYY-MM-DD               (eod only) store candles for a specific day
 
 export const maxDuration = 60;
@@ -34,7 +35,7 @@ async function handle(request: NextRequest, ctx: RouteContext<"/api/jobs/[job]">
 
   let result;
   if (job === "prices") {
-    result = await refreshPrices({ force });
+    result = await refreshPrices({ force, trigger: params.get("trigger") === "manual" ? "manual" : "schedule" });
   } else if (job === "eod") {
     const date = params.get("date") ?? undefined;
     if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return Response.json({ error: "date must be YYYY-MM-DD" }, { status: 400 });

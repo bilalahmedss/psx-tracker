@@ -51,6 +51,7 @@ async function MarketBoard() {
 
   const source = quotes[0]?.source ?? null;
   const delayed = quotes.some((q) => q.delayed);
+  const endOfDay = quotes.some((q) => q.endOfDay);
   const lastPrices = runs["prices"];
 
   return (
@@ -122,6 +123,9 @@ async function MarketBoard() {
             ) : null}
             {delayed ? (
               <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Delayed 15–20 min</span>
+            ) : null}
+            {endOfDay ? (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Closing prices</span>
             ) : null}
           </CardTitle>
           <CardDescription>

@@ -1,7 +1,8 @@
 import "server-only";
+import type { CallBudget } from "./budget";
 import type { CalendarData } from "./calendar";
 import { createDemoSource } from "./sources/demo";
-import { createEodhdSource } from "./sources/eodhd";
+import { createEodhdSource, readQuoteMode } from "./sources/eodhd";
 import type { MarketDataSource, SourceId } from "./types";
 
 // The only entry point for market data. Server-side only: never import from
@@ -15,18 +16,30 @@ export function configuredSourceId(): SourceId {
   throw new Error(`Unknown MARKET_DATA_SOURCE "${id}". Use "demo" or "eodhd".`);
 }
 
-let eodhd: MarketDataSource | null = null;
+let eodhd: { budget: CallBudget; source: MarketDataSource } | null = null;
 
-export function getMarketSource(cal: CalendarData): MarketDataSource {
+/**
+ * The configured source. Metered providers (EODHD) need the daily call budget,
+ * which jobs build over api_usage (src/jobs/market-db.ts); there is no way to get
+ * an EODHD source without one.
+ */
+export function getMarketSource(cal: CalendarData, budget?: CallBudget): MarketDataSource {
   const id = configuredSourceId();
   if (id === "eodhd") {
+    if (!budget) throw new Error("EODHD needs the daily call budget");
     // Reuse one instance so its rate limiter is shared across requests.
-    eodhd ??= createEodhdSource(process.env.EODHD_API_KEY ?? "");
-    return eodhd;
+    if (eodhd?.budget !== budget) {
+      eodhd = {
+        budget,
+        source: createEodhdSource(process.env.EODHD_API_KEY ?? "", { budget, mode: readQuoteMode(process.env.EODHD_QUOTE_MODE) }),
+      };
+    }
+    return eodhd.source;
   }
   return createDemoSource(cal);
 }
 
 export * from "./types";
 export * from "./calendar";
+export * from "./budget";
 export { DEFAULT_TRACKED_SYMBOLS } from "./sources/demo-symbols";

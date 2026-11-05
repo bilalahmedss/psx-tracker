@@ -232,7 +232,7 @@ try {
   const { error: secInsertErr } = await b.client.from("securities").insert({ symbol: "FAKE", name: "Fake Co" });
   check("users can't write market data", secInsertErr?.code === "42501", secInsertErr?.message);
 
-  for (const table of ["prices_latest", "market_holidays", "market_sessions", "job_runs"]) {
+  for (const table of ["prices_latest", "market_holidays", "market_sessions", "job_runs", "api_usage", "market_data_state"]) {
     const { error: readErr } = await b.client.from(table).select("*").limit(1);
     check(`signed-in users can read ${table}`, !readErr, readErr?.message);
   }
@@ -246,6 +246,18 @@ try {
     .from("prices_latest")
     .insert({ symbol: "OGDC", price: "1", as_of: new Date().toISOString(), source: "fake" });
   check("users can't write prices_latest", priceInsertErr?.code === "42501", priceInsertErr?.message);
+  // The daily call counter and refresh state are written by jobs only: a user who
+  // could lower the counter could make the app overspend the provider's limit.
+  const { error: usageInsertErr } = await b.client.from("api_usage").insert({ provider: "eodhd", day: "2099-01-01", calls: 0 });
+  check("users can't write api_usage", usageInsertErr?.code === "42501", usageInsertErr?.message);
+  const { data: usageUpdated } = await b.client.from("api_usage").update({ calls: 0 }).neq("provider", "").select();
+  check("users can't reset the call counter", usageUpdated?.length === 0);
+  const { error: stateInsertErr } = await b.client.from("market_data_state").insert({ job: "fake", source: "x", quote_mode: "live" });
+  check("users can't write market_data_state", stateInsertErr?.code === "42501", stateInsertErr?.message);
+  const { data: stateUpdated } = await b.client.from("market_data_state").update({ last_attempt_at: null }).neq("job", "").select();
+  check("users can't clear the refresh cooldown", stateUpdated?.length === 0);
+  const { data: usageAnon } = await anon.from("api_usage").select("calls");
+  check("signed-out visitors can't read api_usage", usageAnon?.length === 0);
   const { data: holidayUpdated } = await b.client.from("market_holidays").update({ name: "hacked" }).neq("date", "1900-01-01").select();
   check("users can't edit market holidays", holidayUpdated?.length === 0);
 

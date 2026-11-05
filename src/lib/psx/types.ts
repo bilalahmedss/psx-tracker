@@ -34,6 +34,11 @@ export type Candle = {
 
 export type SourceId = "demo" | "eodhd";
 
+/** What a source's prices are: live, delayed intraday quotes, or daily closes only. */
+export type QuoteMode = "live" | "delayed" | "eod";
+
+export type CallKind = "quotes" | "history" | "symbols";
+
 /**
  * A market-data provider. Everything PSX-related goes through one of these,
  * so changing provider is a one-file change in src/lib/psx/sources/.
@@ -45,6 +50,12 @@ export interface MarketDataSource {
   /** True when quotes lag the market (e.g. EODHD is 15-20 min delayed). */
   delayed: boolean;
   delayNote: string | null;
+  /** How prices are refreshed. In "eod" mode jobs read closes with getDailyHistory instead of getQuotes. */
+  quoteMode: QuoteMode;
+  /** Metered sources spend from a daily call budget (see budget.ts). */
+  metered: boolean;
+  /** Calls a request costs: quotes for n symbols, history for n symbols, or the symbol list. */
+  callCost(kind: CallKind, n?: number): number;
   listSymbols(): Promise<SymbolInfo[]>;
   getQuotes(symbols: string[]): Promise<Quote[]>;
   getDailyHistory(symbol: string, from: string, to: string): Promise<Candle[]>;

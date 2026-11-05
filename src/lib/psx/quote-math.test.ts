@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeChange, toPrice, toTick, toVolume } from "./quote-math";
+import { computeChange, toPrice, toTick, toVolume, quoteFromCandles } from "./quote-math";
 
 describe("toPrice", () => {
   it("accepts numbers and numeric strings", () => {
@@ -45,5 +45,35 @@ describe("toTick", () => {
     expect(toTick("1.005")).toBe("1.01");
     expect(toTick("1.004")).toBe("1.00");
     expect(toTick(230)).toBe("230.00");
+  });
+});
+
+describe("quoteFromCandles", () => {
+  const at = (date: string) => new Date(`${date}T10:30:00Z`);
+  it("uses the newest close and the one before it, whatever the order", () => {
+    const q = quoteFromCandles(
+      [
+        { symbol: "MEBL", date: "2026-11-04", open: "526.6", high: "541", low: "526.58", close: "538.48", volume: 1526032 },
+        { symbol: "MEBL", date: "2026-11-03", open: "520", high: "530", low: "519", close: "527.1", volume: 900000 },
+      ],
+      at,
+    );
+    expect(q).toEqual({
+      symbol: "MEBL",
+      price: "538.48",
+      prevClose: "527.1",
+      change: "11.38",
+      changePct: "2.16",
+      open: "526.6",
+      high: "541",
+      low: "526.58",
+      volume: 1526032,
+      asOf: new Date("2026-11-04T10:30:00Z"),
+    });
+  });
+  it("has no change with a single candle, and nothing with none", () => {
+    const q = quoteFromCandles([{ symbol: "X", date: "2026-11-04", open: null, high: null, low: null, close: "10", volume: null }], at);
+    expect(q).toMatchObject({ price: "10", prevClose: null, change: null, changePct: null });
+    expect(quoteFromCandles([], at)).toBeNull();
   });
 });

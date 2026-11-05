@@ -59,7 +59,9 @@ export function PriceTable({ rows }: { rows: QuoteRow[] }) {
                   </td>
                   <td className="px-3 py-2 text-right font-medium tabular-nums">
                     {formatPrice(r.price)}
-                    {r.delayed ? <span className="ml-1 text-[10px] font-normal text-muted-foreground">delayed</span> : null}
+                    {r.delayed || r.endOfDay ? (
+                      <span className="ml-1 text-[10px] font-normal text-muted-foreground">{r.endOfDay ? "close" : "delayed"}</span>
+                    ) : null}
                   </td>
                   <td className={`px-3 py-2 text-right tabular-nums ${tone}`}>
                     {formatSigned(r.change)} <span className="text-xs">({formatPct(r.changePct)})</span>

@@ -1,4 +1,5 @@
 import Decimal from "decimal.js";
+import type { Candle, Quote } from "./types";
 
 // Exact decimal helpers for quotes. Inputs come from APIs as numbers, strings or "NA".
 
@@ -41,4 +42,26 @@ export function computeChange(
 /** Round to PSX tick size (0.01). */
 export function toTick(value: Decimal.Value): string {
   return new Decimal(value).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2);
+}
+
+/**
+ * A quote from daily candles (end-of-day mode): the newest close, with the
+ * close before it as the previous close. `asOf` is when that close happened.
+ */
+export function quoteFromCandles(candles: Candle[], asOf: (date: string) => Date): Quote | null {
+  const sorted = [...candles].sort((a, b) => a.date.localeCompare(b.date));
+  const last = sorted.at(-1);
+  if (!last) return null;
+  const prevClose = sorted.at(-2)?.close ?? null;
+  return {
+    symbol: last.symbol,
+    price: last.close,
+    prevClose,
+    ...computeChange(last.close, prevClose),
+    open: last.open,
+    high: last.high,
+    low: last.low,
+    volume: last.volume,
+    asOf: asOf(last.date),
+  };
 }

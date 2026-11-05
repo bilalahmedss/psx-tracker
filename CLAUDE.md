@@ -70,7 +70,10 @@ Drizzle connects with `DATABASE_URL` as a privileged Postgres role and **bypasse
 - Never call a provider from the browser or from user-request code. Jobs (`src/jobs/`) fetch and store; pages read only from Supabase (`prices_latest`, `prices`, `securities`).
 - All provider HTTP goes through `PoliteClient` (`http.ts`): serial, minimum gap, backoff, secrets redacted.
 - **Do not scrape dps.psx.com.pk.** Its data endpoints are protected by a client token; never reverse-engineer or bypass bot protection on any site.
-- Delayed sources (EODHD, ~15-20 min) must be labelled "delayed" wherever their prices appear. Demo data must be labelled "Demo data".
+- **EODHD daily budget:** every metered call reserves its cost in `api_usage` first (`src/lib/psx/budget.ts`, store in `src/jobs/market-db.ts`) and is never sent past `EODHD_DAILY_LIMIT` (default 15 of the free plan's 20, per UTC day). EODHD counts one call per ticker. `getMarketSource()` refuses to build EODHD without the budget, and the adapter never retries. Don't call EODHD from anywhere else; `npm run eodhd:probe` is the only script that does, and it reserves too.
+- **Refresh rules** live in `src/lib/psx/refresh-policy.ts` (pure, tested): `PRICE_REFRESH_MINUTES`, `PRICE_REFRESH_SCOPE` (holdings | all), the 5-minute button cooldown, keeping one refresh in reserve for the button, and the status line text. The free plan has no PSX intraday quotes, so `EODHD_QUOTE_MODE=eod` (default) stores daily closes; `realtime` is for paid plans. Job state is in `market_data_state`.
+- The "Refresh prices" button (`src/components/price-refresh.tsx`) calls a server action that POSTs `/api/jobs/prices?trigger=manual` with `CRON_SECRET` to the fixed `JOBS_BASE_URL`; never build that URL from request headers.
+- Delayed sources (EODHD realtime, ~15-20 min) must be labelled "delayed" wherever their prices appear; daily closes (`prices_latest.end_of_day`) are labelled "close" / "closing prices". Demo data must be labelled "Demo data".
 - Market hours and holidays come from `calendar.ts` + `market_holidays` / `market_sessions`, all in PKT. Lunar holidays and Friday hours stay "to confirm" until checked against the PSX notice.
 - Job endpoints: `/api/jobs/prices` and `/api/jobs/eod`, Bearer `CRON_SECRET`. Locally `npm run jobs:dev`; production schedule in `docs/cron.md`.
 
@@ -110,4 +113,5 @@ A user owns portfolios; a portfolio owns transactions. **Holdings, lots and real
 - `npm run dev-user -- create|delete`: confirmed local test login, stored in `.env.local` as `DEV_USER_EMAIL` / `DEV_USER_PASSWORD`
 - `npm run check:supabase`: verify `.env.local` keys and connections
 - `npm run jobs:dev`: local scheduler (needs `npm run dev` running)
-- `npm run job -- prices|eod [--force] [--date=YYYY-MM-DD]`: run one job once
+- `npm run job -- prices|eod [--force] [--date=YYYY-MM-DD]`: run one job once (`--force` skips timing rules, never the daily limit)
+- `npm run eodhd:probe`: spend up to 5 EODHD calls to see what the plan returns
