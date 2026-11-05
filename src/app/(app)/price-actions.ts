@@ -3,6 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 
+/**
+ * A fixed, configured origin: never build it from request headers, or the secret
+ * could be sent elsewhere. On Vercel, VERCEL_PROJECT_PRODUCTION_URL is set by the
+ * platform to the production domain.
+ */
+function jobsBaseUrl(): string {
+  if (process.env.JOBS_BASE_URL) return process.env.JOBS_BASE_URL.replace(/\/$/, "");
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  return "http://localhost:3000";
+}
+
 export type RefreshResult = { ok: boolean; message: string };
 
 /**
@@ -13,8 +24,7 @@ export type RefreshResult = { ok: boolean; message: string };
 export async function refreshPricesNow(): Promise<RefreshResult> {
   await requireUser();
   const secret = process.env.CRON_SECRET;
-  // A fixed, configured origin: never build it from request headers, or the secret could be sent elsewhere.
-  const base = process.env.JOBS_BASE_URL ?? "http://localhost:3000";
+  const base = jobsBaseUrl();
   if (!secret) return { ok: false, message: "Price refresh is not configured (CRON_SECRET)." };
 
   let body: { status?: string; rows?: number; message?: string; error?: string };

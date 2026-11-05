@@ -18,7 +18,9 @@
     "dev-user": "node --env-file-if-exists=.env.local scripts/dev-user.mjs",
     "jobs:dev": "node --env-file-if-exists=.env.local scripts/jobs-dev.mjs",
     "job": "node --env-file-if-exists=.env.local scripts/jobs-dev.mjs once",
-    "eodhd:probe": "node --env-file-if-exists=.env.local scripts/eodhd-probe.mjs"
+    "eodhd:probe": "node --env-file-if-exists=.env.local scripts/eodhd-probe.mjs",
+    "deploy:env": "node scripts/prepare-deploy.mjs",
+    "deploy:cron": "node --env-file-if-exists=.env.local scripts/setup-cron.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

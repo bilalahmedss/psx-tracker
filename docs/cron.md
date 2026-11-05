@@ -30,63 +30,17 @@ npm run eodhd:probe             # spends up to 5 EODHD calls to check what the p
 
 ## Production (Supabase pg_cron + pg_net)
 
-Vercel's free plan only allows daily cron jobs, so Supabase calls the deployed app instead. Do this once the app is deployed.
+Vercel's free plan only allows daily cron jobs, so Supabase calls the deployed app instead. Local dev and production share one Supabase project, so they also share the EODHD call counter (`api_usage`) and refresh state: running `jobs:dev` locally can't push production over the daily limit.
 
-1. In Vercel, set `CRON_SECRET`, `MARKET_DATA_SOURCE`, `JOBS_BASE_URL` (the deployed URL) and, for EODHD, `EODHD_API_KEY`, `EODHD_DAILY_LIMIT`, `EODHD_QUOTE_MODE`.
-2. In Supabase → **Database → Extensions**, enable `pg_cron` and `pg_net`.
-3. Store the secret and URL in Vault (SQL editor), replacing the placeholders:
+1. `npm run deploy:env` writes `.env.vercel` (git-ignored): the production variables, with a new production `CRON_SECRET`. Paste it into Vercel → Project → Settings → Environment Variables.
+2. Deploy, then run `npm run deploy:cron -- --url=https://<your-app>.vercel.app`. It enables `pg_cron` and `pg_net`, stores the URL and `CRON_SECRET` in Supabase Vault, and schedules (UTC):
 
-```sql
-select vault.create_secret('<your CRON_SECRET>', 'cron_secret');
-select vault.create_secret('https://<your-app>.vercel.app', 'app_url');
-```
+| Job | Schedule | Calls |
+| --- | --- | --- |
+| `psx-prices` | `*/5 * * * *` | `/api/jobs/prices` (decides itself; most runs skip without a provider call) |
+| `psx-eod` | `0 12 * * 1-5` | `/api/jobs/eod` (17:00 PKT) |
+| `psx-snapshots` | `*/5 * * * *` | `/api/jobs/snapshots` |
 
-4. Schedule the jobs. pg_cron runs in **UTC**; PKT is UTC+5.
+3. `npm run deploy:cron -- --status` shows the jobs, recent runs and HTTP responses. `--remove` unschedules them.
 
-```sql
-select cron.schedule(
-  'psx-prices',
-  '*/5 * * * *',
-  $$
-  select net.http_post(
-    url := (select decrypted_secret from vault.decrypted_secrets where name = 'app_url') || '/api/jobs/prices',
-    headers := jsonb_build_object(
-      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')
-    ),
-    timeout_milliseconds := 55000
-  );
-  $$
-);
-
-select cron.schedule(
-  'psx-snapshots',
-  '*/5 * * * *',
-  $$
-  select net.http_post(
-    url := (select decrypted_secret from vault.decrypted_secrets where name = 'app_url') || '/api/jobs/snapshots',
-    headers := jsonb_build_object(
-      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')
-    ),
-    timeout_milliseconds := 55000
-  );
-  $$
-);
-
-select cron.schedule(
-  'psx-eod',
-  '0 12 * * 1-5',
-  $$
-  select net.http_post(
-    url := (select decrypted_secret from vault.decrypted_secrets where name = 'app_url') || '/api/jobs/eod',
-    headers := jsonb_build_object(
-      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')
-    ),
-    timeout_milliseconds := 55000
-  );
-  $$
-);
-```
-
-5. Check it's working: `select * from cron.job_run_details order by start_time desc limit 10;` and the `job_runs` table (or the Market page's "Last price job" line).
-
-To stop: `select cron.unschedule('psx-prices'); select cron.unschedule('psx-snapshots'); select cron.unschedule('psx-eod');`
+If you rotate `CRON_SECRET`, change it in `.env.vercel`, update it in Vercel (and redeploy), then re-run `deploy:cron`.
