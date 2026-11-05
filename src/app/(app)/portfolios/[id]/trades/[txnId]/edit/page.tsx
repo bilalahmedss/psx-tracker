@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { FormSkeleton } from "@/components/skeleton";
 import { dec } from "@/lib/engine/money";
-import { feeProfileOf, getPortfolioBook, getSecurityOptions, heldBySymbol } from "@/lib/portfolio/book";
+import { cashContextOf, feeProfileOf, getPortfolioBook, getSecurityOptions, heldBySymbol } from "@/lib/portfolio/book";
 import { saveTrade } from "../../../entry-actions";
 import { TradeForm } from "../../../trade-form";
 
@@ -42,6 +42,8 @@ async function EditTrade({
         returnTo={returnTo}
         securities={securities}
         feeProfile={feeProfileOf(book)}
+        cash={cashContextOf(book)}
+        editingTxnId={t.id}
         held={heldBySymbol(book)}
         cancelHref={returnTo}
         submitLabel="Save changes"

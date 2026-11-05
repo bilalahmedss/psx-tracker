@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCashLedger } from "./cash";
+import { NEGATIVE_CASH_WARNING, buildCashLedger, negativeCashWarning } from "./cash";
 import type { EngineCashEntry, EngineDividend, EngineTxn } from "./types";
 
 const base = { fee: "0", tax: "0", otherCharges: "0", affectsCash: true };
@@ -53,5 +53,48 @@ describe("buildCashLedger", () => {
 
   it("starts at zero with nothing recorded", () => {
     expect(buildCashLedger({ txns: [], dividends: [], entries: [] }).balance.toFixed(2)).toBe("0.00");
+  });
+});
+
+describe("negativeCashWarning", () => {
+  const deposit: EngineCashEntry = { id: "c", type: "deposit", amount: "10000", date: "2025-01-01", note: null, createdAt: "2025-01-01T00:00:00Z" };
+  const buy = (id: string, qty: string, price: string, affectsCash = true): EngineTxn => ({
+    id,
+    symbol: "OGDC",
+    type: "buy",
+    qty,
+    price,
+    fee: "0",
+    tax: "0",
+    otherCharges: "0",
+    tradeDate: "2025-01-10",
+    createdAt: `2025-01-10T10:00:0${id.length}Z`,
+    affectsCash,
+  });
+  const current = { txns: [buy("a", "100", "50")], dividends: [], entries: [deposit] }; // 10,000 - 5,000 = 5,000
+
+  it("warns when a new trade takes cash below zero", () => {
+    // 5,000 left; buying 200 x 50 = 10,000 -> -5,000
+    const w = negativeCashWarning(current, { txns: [buy("bb", "200", "50")] });
+    expect(w?.message).toBe(NEGATIVE_CASH_WARNING);
+    expect(w?.message).toBe("Cash goes negative. Add a deposit or turn off 'affects cash'");
+    expect(w?.balance.toFixed(2)).toBe("-5000.00");
+    expect(w?.date).toBe("2025-01-10");
+  });
+
+  it("is quiet when cash stays positive or the trade doesn't affect cash", () => {
+    expect(negativeCashWarning(current, { txns: [buy("bb", "10", "50")] })).toBeNull();
+    expect(negativeCashWarning(current, { txns: [buy("bb", "200", "50", false)] })).toBeNull();
+  });
+
+  it("accounts for the edited trade being replaced, not added", () => {
+    // Editing trade "a" from 100 to 150 shares: 10,000 - 7,500 = 2,500, still positive
+    expect(negativeCashWarning(current, { txns: [buy("a", "150", "50")], replacesTxnId: "a" })).toBeNull();
+  });
+
+  it("doesn't nag about a ledger that was already negative unless it gets worse", () => {
+    const negative = { txns: [buy("a", "300", "50")], dividends: [], entries: [deposit] }; // -5,000 already
+    expect(negativeCashWarning(negative, { entries: [{ ...deposit, id: "d2", amount: "1000" }] })).toBeNull();
+    expect(negativeCashWarning(negative, { txns: [buy("bb", "10", "50")] })).not.toBeNull();
   });
 });

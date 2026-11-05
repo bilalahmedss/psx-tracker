@@ -1,17 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-
-const selectClass =
-  "h-8 rounded-lg border border-input bg-transparent px-2 text-sm font-medium outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
+import { NativeSelect } from "@/components/ui/native-select";
 
 export function PortfolioPicker({ portfolios, selected }: { portfolios: { id: string; name: string }[]; selected: string }) {
   const router = useRouter();
   return (
     <label className="flex items-center gap-2 text-sm text-muted-foreground">
       <span className="sr-only">Portfolio</span>
-      <select
-        className={selectClass}
+      <NativeSelect
+        className="w-auto font-medium"
         value={selected}
         onChange={(e) => router.push(e.target.value === "all" ? "/home" : `/home?portfolio=${e.target.value}`)}
       >
@@ -21,7 +19,7 @@ export function PortfolioPicker({ portfolios, selected }: { portfolios: { id: st
             {p.name}
           </option>
         ))}
-      </select>
+      </NativeSelect>
     </label>
   );
 }

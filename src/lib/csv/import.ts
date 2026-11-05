@@ -26,6 +26,22 @@ export const IMPORT_COLUMNS = [
 ] as const;
 
 export const IMPORT_TYPES = ["buy", "sell", "dividend", "deposit", "withdrawal"] as const;
+
+/**
+ * Column names from other apps' exports, mapped to ours. SmartPSX's
+ * broker_fees is the all-in charge per trade (commission + FED + other charges).
+ */
+export const COLUMN_ALIASES: Record<string, string> = {
+  broker_fees: "total_charges",
+  fees: "total_charges",
+  notes: "note",
+  qty: "quantity",
+  shares: "quantity",
+  trade_date: "date",
+};
+
+/** Accepted after aliasing: the template columns plus an all-in charges column. */
+const KNOWN_COLUMNS = new Set<string>([...IMPORT_COLUMNS, "total_charges"]);
 export const MAX_IMPORT_ROWS = 5000;
 
 export type TradeInsert = {
@@ -66,6 +82,8 @@ export type PreviewRow = {
 export type ImportResult = {
   /** File-level problem (no header, too many rows...). */
   fatal: string | null;
+  /** Non-blocking notes, e.g. ignored or renamed columns. */
+  warnings: string[];
   rows: PreviewRow[];
   trades: TradeInsert[];
   dividends: DividendInsert[];
@@ -126,24 +144,62 @@ function positive(value: string, label: string, wholeNumber = false): string {
 
 const fmt = (v: string) => new Decimal(v).toFixed(2);
 
+type AutoFees = { commission: { toFixed(dp: number): string }; tax: { toFixed(dp: number): string } };
+
+/**
+ * Charges for a trade row. The file's fees are used as-is: the fee profile only
+ * fills in when commission and sales_tax are both blank. An all-in total (e.g.
+ * SmartPSX's broker_fees) is stored as the commission with no separate tax.
+ */
+export function tradeCharges(input: {
+  commission: string | null;
+  salesTax: string | null;
+  other: string | null;
+  total: string | null;
+  auto: () => AutoFees;
+}): { fee: string; tax: string; other: string } {
+  const { commission, salesTax, other, total } = input;
+  if (total !== null) {
+    if (commission !== null || salesTax !== null || other !== null) {
+      throw new RowError("Give either broker_fees (total charges) or commission/sales_tax/other_charges, not both");
+    }
+    return { fee: total, tax: "0", other: "0" };
+  }
+  if (commission === null && salesTax === null) {
+    const a = input.auto();
+    return { fee: a.commission.toFixed(2), tax: a.tax.toFixed(2), other: other ?? "0" };
+  }
+  // At least one of commission/sales_tax given: never top up the other from the profile.
+  return { fee: commission ?? "0", tax: salesTax ?? "0", other: other ?? "0" };
+}
+
 export function parseImport(text: string, ctx: ImportContext): ImportResult {
-  const empty = { rows: [], trades: [], dividends: [], cash: [], errorCount: 0 };
+  const empty = { rows: [], trades: [], dividends: [], cash: [], errorCount: 0, warnings: [] as string[] };
   const table = parseCsv(text);
   if (table.length === 0) return { fatal: "The file is empty.", ...empty };
 
-  const header = table[0].map((h) => h.trim().toLowerCase().replace(/\s+/g, "_"));
+  const raw = table[0].map((h) => h.trim().toLowerCase().replace(/\s+/g, "_"));
+  const header = raw.map((h) => COLUMN_ALIASES[h] ?? h);
   for (const col of ["date", "type"]) {
-    if (!header.includes(col)) return { fatal: `Missing the "${col}" column. Start from the template.`, ...empty };
+    if (!header.includes(col)) return { ...empty, fatal: `Missing the "${col}" column. Start from the template.` };
   }
-  const unknown = header.filter((h) => h && !(IMPORT_COLUMNS as readonly string[]).includes(h));
-  if (unknown.length) return { fatal: `Unknown column(s): ${unknown.join(", ")}. Use the template's column names.`, ...empty };
-  if (table.length - 1 > MAX_IMPORT_ROWS) return { fatal: `Too many rows (max ${MAX_IMPORT_ROWS}). Split the file.`, ...empty };
+  if (table.length - 1 > MAX_IMPORT_ROWS) return { ...empty, fatal: `Too many rows (max ${MAX_IMPORT_ROWS}). Split the file.` };
 
-  const result: ImportResult = { fatal: null, ...empty, rows: [], trades: [], dividends: [], cash: [] };
+  // Unknown columns are skipped with a warning rather than failing the file.
+  const warnings: string[] = [];
+  const ignored = raw.filter((h, i) => h && !KNOWN_COLUMNS.has(header[i]));
+  if (ignored.length) warnings.push(`Ignored column(s) we don't use: ${ignored.join(", ")}.`);
+  const mapped = raw.filter((h, i) => COLUMN_ALIASES[h] && KNOWN_COLUMNS.has(header[i]));
+  if (mapped.length) {
+    const label = (h: string) => (COLUMN_ALIASES[h] === "total_charges" ? "total charges (commission + tax + other)" : COLUMN_ALIASES[h]);
+    warnings.push(`Read ${mapped.map((h) => `${h} as ${label(h)}`).join("; ")}.`);
+  }
+
+  const result: ImportResult = { ...empty, fatal: null, warnings, rows: [], trades: [], dividends: [], cash: [] };
 
   table.slice(1).forEach((cells, i) => {
     const line = i + 2;
-    const get = (col: (typeof IMPORT_COLUMNS)[number]) => {
+    const get = (col: (typeof IMPORT_COLUMNS)[number] | "total_charges") => {
       const idx = header.indexOf(col);
       return idx >= 0 ? (cells[idx] ?? "").trim() : "";
     };
@@ -163,10 +219,13 @@ export function parseImport(text: string, ctx: ImportContext): ImportResult {
         if (!ctx.knownSymbols.has(symbol)) throw new RowError(symbol ? `Unknown symbol "${symbol}"` : "Symbol is required");
         const qty = positive(required(parseNumber(get("quantity"), "quantity"), "quantity"), "quantity", true);
         const price = positive(required(parseNumber(get("price"), "price"), "price"), "price");
-        const auto = computeFees(ctx.feeProfile, qty, price);
-        const fee = parseNumber(get("commission"), "commission") ?? auto.commission.toFixed(2);
-        const tax = parseNumber(get("sales_tax"), "sales_tax") ?? auto.tax.toFixed(2);
-        const other = parseNumber(get("other_charges"), "other_charges") ?? "0";
+        const { fee, tax, other } = tradeCharges({
+          commission: parseNumber(get("commission"), "commission"),
+          salesTax: parseNumber(get("sales_tax"), "sales_tax"),
+          other: parseNumber(get("other_charges"), "other_charges"),
+          total: parseNumber(get("total_charges"), "broker_fees"),
+          auto: () => computeFees(ctx.feeProfile, qty, price),
+        });
         const affectsCash = parseBool(get("affects_cash"), true);
         result.trades.push({ symbol, type, qty, price, fee, tax, other_charges: other, trade_date: date, affects_cash: affectsCash, note });
         preview.summary = `${type === "buy" ? "Buy" : "Sell"} ${qty} @ ${price}; charges ${fmt(dec(fee).plus(tax).plus(other).toFixed())}`;

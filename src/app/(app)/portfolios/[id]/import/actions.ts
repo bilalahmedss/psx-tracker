@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { negativeCashWarning } from "@/lib/engine/cash";
 import { OversellError, runFifo } from "@/lib/engine/fifo";
 import type { EngineTxn } from "@/lib/engine/types";
 import { parseImport, type ImportResult } from "@/lib/csv/import";
@@ -14,11 +15,21 @@ export type ImportPreview = Omit<ImportResult, "trades" | "dividends" | "cash"> 
   counts: { trades: number; dividends: number; cash: number };
   /** Selling more than held once imported trades are merged with existing ones. */
   oversell: string | null;
+  /** Non-blocking: the import would take cash below zero. */
+  cashWarning: string | null;
 };
 
 async function analyse(portfolioId: string, text: string): Promise<{ preview: ImportPreview; parsed: ImportResult }> {
   if (text.length > MAX_BYTES) {
-    const preview = { fatal: "File is larger than 1 MB. Split it into smaller files.", rows: [], errorCount: 0, counts: { trades: 0, dividends: 0, cash: 0 }, oversell: null };
+    const preview = {
+      fatal: "File is larger than 1 MB. Split it into smaller files.",
+      warnings: [],
+      rows: [],
+      errorCount: 0,
+      counts: { trades: 0, dividends: 0, cash: 0 },
+      oversell: null,
+      cashWarning: null,
+    };
     return { preview, parsed: { ...preview, trades: [], dividends: [], cash: [] } };
   }
   const [book, securities] = await Promise.all([getPortfolioBook(portfolioId), getSecurityOptions()]);
@@ -30,8 +41,10 @@ async function analyse(portfolioId: string, text: string): Promise<{ preview: Im
   });
 
   let oversell: string | null = null;
+  let cashWarning: string | null = null;
+  let incoming: EngineTxn[] = [];
   if (!parsed.fatal && parsed.trades.length) {
-    const incoming: EngineTxn[] = parsed.trades.map((t, i) => ({
+    incoming = parsed.trades.map((t, i) => ({
       id: `csv-${i}`,
       symbol: t.symbol,
       type: t.type,
@@ -53,8 +66,31 @@ async function analyse(portfolioId: string, text: string): Promise<{ preview: Im
     }
   }
 
+  if (!parsed.fatal) {
+    const stamp = "9999-12-31T00:00:00Z";
+    const warning = negativeCashWarning(
+      { txns: book.txns, dividends: book.dividends, entries: book.cashEntries },
+      {
+        txns: incoming,
+        dividends: parsed.dividends.map((d, i) => ({
+          id: `csv-d${i}`,
+          symbol: d.symbol,
+          gross: d.gross,
+          wht: d.wht,
+          zakatDeducted: d.zakat,
+          net: d.net,
+          paidOn: d.paid_on,
+          affectsCash: d.affects_cash,
+          createdAt: stamp,
+        })),
+        entries: parsed.cash.map((c, i) => ({ id: `csv-c${i}`, type: c.type, amount: c.amount, date: c.date, note: c.note, createdAt: stamp })),
+      },
+    );
+    if (warning) cashWarning = `${warning.message} (it first drops below zero on ${warning.date}, to Rs ${warning.balance.toFixed(2)}).`;
+  }
+
   const { trades, dividends, cash, ...rest } = parsed;
-  return { preview: { ...rest, counts: { trades: trades.length, dividends: dividends.length, cash: cash.length }, oversell }, parsed };
+  return { preview: { ...rest, counts: { trades: trades.length, dividends: dividends.length, cash: cash.length }, oversell, cashWarning }, parsed };
 }
 
 export async function previewImport(portfolioId: string, text: string): Promise<ImportPreview> {

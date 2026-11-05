@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { NativeSelect } from "@/components/ui/native-select";
 import { useActionState, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,9 +34,6 @@ type Props = {
   /** Rendered under the tax fields (status history on the edit page). */
   taxHistory?: React.ReactNode;
 };
-
-const selectClass =
-  "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive md:text-sm dark:bg-input/30";
 
 export function PortfolioForm({ action, submitLabel, brokers, defaults, initial, currentStatus, taxHistory }: Props) {
   const [state, formAction, pending] = useActionState(action, undefined);
@@ -81,14 +79,14 @@ export function PortfolioForm({ action, submitLabel, brokers, defaults, initial,
             />
           </Field>
           <Field label="Broker" name="brokerId" error={errors.brokerId} hint="Choosing a broker fills in its default fees.">
-            <select {...field("brokerId")} className={selectClass} value={values.brokerId} onChange={(e) => onBrokerChange(e.target.value)}>
+            <NativeSelect {...field("brokerId")} value={values.brokerId} onChange={(e) => onBrokerChange(e.target.value)}>
               <option value="">No broker</option>
               {brokers.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </Field>
           <label className="flex items-center gap-2 text-sm">
             <input

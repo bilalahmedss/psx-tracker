@@ -178,3 +178,12 @@ export function feeProfileOf(book: PortfolioBook): FeeProfile {
 export function heldBySymbol(book: PortfolioBook): Record<string, string> {
   return Object.fromEntries(book.result.holdings.map((h) => [h.symbol, h.qty.toFixed()]));
 }
+
+/** Cash ledger inputs for client-side warnings (engine rows only, no notes). */
+export function cashContextOf(book: PortfolioBook) {
+  return {
+    txns: book.txns.map((t) => ({ id: t.id, symbol: t.symbol, type: t.type, qty: t.qty, price: t.price, fee: t.fee, tax: t.tax, otherCharges: t.otherCharges, tradeDate: t.tradeDate, createdAt: t.createdAt, affectsCash: t.affectsCash })),
+    dividends: book.dividends.map((d) => ({ id: d.id, symbol: d.symbol, gross: d.gross, wht: d.wht, zakatDeducted: d.zakatDeducted, net: d.net, paidOn: d.paidOn, affectsCash: d.affectsCash, createdAt: d.createdAt })),
+    entries: book.cashEntries,
+  };
+}

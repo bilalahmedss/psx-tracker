@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { FormSkeleton } from "@/components/skeleton";
-import { feeProfileOf, getPortfolioBook, getSecurityOptions, heldBySymbol } from "@/lib/portfolio/book";
+import { cashContextOf, feeProfileOf, getPortfolioBook, getSecurityOptions, heldBySymbol } from "@/lib/portfolio/book";
 import { pktParts } from "@/lib/psx/calendar";
 import { saveTrade } from "../../entry-actions";
 import { TradeForm } from "../../trade-form";
@@ -38,6 +38,7 @@ async function NewTrade({
         action={saveTrade.bind(null, id, null)}
         securities={securities}
         feeProfile={feeProfileOf(book)}
+        cash={cashContextOf(book)}
         held={held}
         cancelHref={symbol ? `/portfolios/${id}/holdings/${encodeURIComponent(symbol)}` : `/portfolios/${id}`}
         submitLabel={type === "buy" ? "Save buy" : "Save sell"}

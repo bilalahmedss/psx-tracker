@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { csvCell, parseCsv, toCsv } from "./csv";
-import { TEMPLATE_CSV, parseDate, parseImport, parseNumber, type ImportContext } from "./import";
+import { TEMPLATE_CSV, parseDate, parseImport, parseNumber, tradeCharges, type ImportContext } from "./import";
 
 describe("parseCsv", () => {
   it("handles quotes, escaped quotes, commas and CRLF", () => {
@@ -116,9 +116,58 @@ describe("parseImport", () => {
     expect(r.cash).toHaveLength(1);
   });
 
-  it("rejects files without the required columns or with unknown ones", () => {
+  it("rejects files without the required columns", () => {
     expect(parseImport("symbol,quantity\nOGDC,1\n", ctx).fatal).toMatch(/"date"/);
-    expect(parseImport("date,type,colour\n", ctx).fatal).toMatch(/colour/);
     expect(parseImport("", ctx).fatal).toMatch(/empty/);
+  });
+
+  it("ignores unknown columns with a warning instead of failing", () => {
+    const r = parseImport("date,type,amount,colour\n2025-01-01,deposit,100,blue\n", ctx);
+    expect(r.fatal).toBeNull();
+    expect(r.warnings).toEqual(["Ignored column(s) we don't use: colour."]);
+    expect(r.cash).toHaveLength(1);
+  });
+});
+
+describe("parseImport: SmartPSX export format", () => {
+  // Same layout as SmartPSX's trade history export (made-up numbers):
+  // symbol,type,quantity,price,date,broker_fees,notes
+  const SMARTPSX = [
+    "symbol,type,quantity,price,date,broker_fees,notes",
+    "HBL,BUY,4,559.99,2026-09-08,9.04,Broker A",
+    "OGDC,BUY,8,125.00,2026-09-08,6.81,Broker A",
+    "OGDC,SELL,3,130.00,2026-09-20,2.10,Broker B",
+  ].join("\n");
+
+  it("maps broker_fees and notes, and says so", () => {
+    const r = parseImport(SMARTPSX, ctx);
+    expect(r.fatal).toBeNull();
+    expect(r.errorCount).toBe(0);
+    expect(r.warnings).toEqual(["Read broker_fees as total charges (commission + tax + other); notes as note."]);
+    expect(r.trades.map((t) => t.note)).toEqual(["Broker A", "Broker A", "Broker B"]);
+  });
+
+  it("uses broker_fees as the all-in charge with no extra tax (matches SmartPSX average cost)", () => {
+    const [hbl] = parseImport(SMARTPSX, ctx).trades;
+    expect(hbl).toMatchObject({ type: "buy", fee: "9.04", tax: "0", other_charges: "0" });
+    // Average cost = (4 x 559.99 + 9.04) / 4 = 2,249.00 / 4 = 562.25, as in SmartPSX.
+    // The old importer added 0.50 profile tax on top, giving 562.375 -> 562.38.
+    const cost = (4 * 559.99 + Number(hbl.fee) + Number(hbl.tax)) / 4;
+    expect(cost.toFixed(2)).toBe("562.25");
+  });
+});
+
+describe("tradeCharges (file fees used as-is)", () => {
+  const auto = () => ({ commission: { toFixed: () => "75.00" }, tax: { toFixed: () => "11.25" } });
+  it("fills commission and tax from the profile only when both are blank", () => {
+    expect(tradeCharges({ commission: null, salesTax: null, other: null, total: null, auto })).toEqual({ fee: "75.00", tax: "11.25", other: "0" });
+    expect(tradeCharges({ commission: null, salesTax: null, other: "5", total: null, auto })).toEqual({ fee: "75.00", tax: "11.25", other: "5" });
+  });
+  it("never tops up a given commission with profile tax (the MEBL/SYS bug)", () => {
+    expect(tradeCharges({ commission: "9.04", salesTax: null, other: null, total: null, auto })).toEqual({ fee: "9.04", tax: "0", other: "0" });
+    expect(tradeCharges({ commission: null, salesTax: "1.50", other: null, total: null, auto })).toEqual({ fee: "0", tax: "1.50", other: "0" });
+  });
+  it("rejects a total alongside separate fee columns", () => {
+    expect(() => tradeCharges({ commission: "1", salesTax: null, other: null, total: "2", auto })).toThrow(/either broker_fees/);
   });
 });

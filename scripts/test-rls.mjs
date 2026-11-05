@@ -268,6 +268,28 @@ try {
   const { data: aFeeAfter } = await a.client.from("fee_profiles").select("pct_above").eq("id", aRow.fee_profile_id).single();
   check("A can update own portfolio and fees", !aUpdateErr && Number(aFeeAfter?.pct_above) === 0.001, aUpdateErr?.message);
 
+  // Regression: a portfolio's broker must be stored exactly as chosen, on create and on edit.
+  const { data: jsGlobal } = await a.client.from("brokers").select("id").eq("name", "JS Global Capital").single();
+  const { data: brokerPid, error: brokerCreateErr } = await a.client.rpc("create_portfolio", {
+    p_name: "Broker check",
+    p_broker_id: jsGlobal?.id,
+    p_is_default: false,
+    ...PSX_FEES,
+  });
+  const brokerOf = async (pid) =>
+    (await a.client.from("portfolios").select("brokers!portfolios_broker_id_brokers_id_fk(name)").eq("id", pid).single()).data?.brokers?.name;
+  check("the chosen broker is saved on create", !brokerCreateErr && (await brokerOf(brokerPid)) === "JS Global Capital", brokerCreateErr?.message);
+  await a.client.rpc("update_portfolio", {
+    p_id: brokerPid,
+    p_name: "Broker check renamed",
+    p_broker_id: jsGlobal?.id,
+    p_is_default: false,
+    ...PSX_FEES,
+    p_status_effective_from: null,
+  });
+  check("the broker survives an edit", (await brokerOf(brokerPid)) === "JS Global Capital");
+  await a.client.rpc("delete_portfolio", { p_id: brokerPid });
+
   const { data: startStatus } = await a.client.from("portfolio_tax_status").select("status, effective_from").eq("portfolio_id", aPortfolioId);
   check("a new portfolio starts with one status row 'from the start'", startStatus?.length === 1 && startStatus[0].effective_from === "1900-01-01");
 

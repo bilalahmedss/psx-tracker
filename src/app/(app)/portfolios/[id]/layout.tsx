@@ -5,6 +5,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { getPortfolioBook } from "@/lib/portfolio/book";
 import { pct, rs, signedRs, tone, toneClass } from "@/lib/portfolio/display";
 import { TAX_STATUS_LABEL } from "../labels";
+import { PortfolioActions, SettingsLink } from "./portfolio-actions";
 import { PortfolioTabs } from "./tabs";
 
 export default function PortfolioLayout({ children, params }: LayoutProps<"/portfolios/[id]">) {
@@ -48,18 +49,7 @@ async function PortfolioHeader({ params }: { params: Promise<{ id: string }> }) 
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href={`/portfolios/${id}/trades/new?type=buy`} className={buttonVariants({ size: "sm" })}>
-            Add trade
-          </Link>
-          <Link href={`/portfolios/${id}/dividends/new`} className={buttonVariants({ size: "sm", variant: "outline" })}>
-            Add dividend
-          </Link>
-          <Link href={`/portfolios/${id}/cash/new`} className={buttonVariants({ size: "sm", variant: "outline" })}>
-            Cash entry
-          </Link>
-          <Link href={`/portfolios/${id}/import`} className={buttonVariants({ size: "sm", variant: "outline" })}>
-            Import CSV
-          </Link>
+          <PortfolioActions portfolioId={id} />
           <details className="relative">
             <summary className={`${buttonVariants({ size: "sm", variant: "outline" })} list-none [&::-webkit-details-marker]:hidden`}>Export</summary>
             <ul className="absolute right-0 z-20 mt-1 w-44 rounded-lg border bg-popover p-1 text-sm shadow-md">
@@ -72,9 +62,7 @@ async function PortfolioHeader({ params }: { params: Promise<{ id: string }> }) 
               ))}
             </ul>
           </details>
-          <Link href={`/portfolios/${id}/edit`} className={buttonVariants({ size: "sm", variant: "ghost" })}>
-            Settings
-          </Link>
+          <SettingsLink portfolioId={id} />
         </div>
       </div>
       <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-[repeat(auto-fill,minmax(10rem,1fr))]">

@@ -73,6 +73,11 @@ export function ImportFlow({ portfolioId }: { portfolioId: string }) {
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             {preview.oversell ? <FormNotice error={preview.oversell} /> : null}
+            {[...preview.warnings, ...(preview.cashWarning ? [preview.cashWarning] : [])].map((w) => (
+              <p key={w} role="status" className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+                {w}
+              </p>
+            ))}
             <div className="max-h-[28rem] overflow-auto rounded-lg border">
               <table className="w-full min-w-[640px] text-sm">
                 <thead className="sticky top-0 bg-muted text-left text-xs text-muted-foreground">

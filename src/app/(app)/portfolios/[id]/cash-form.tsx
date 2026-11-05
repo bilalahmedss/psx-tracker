@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { NativeSelect } from "@/components/ui/native-select";
 import { useActionState, useState } from "react";
 import { FormNotice } from "@/components/auth-shell";
 import { FormField, fieldProps } from "@/components/form-field";
@@ -23,9 +24,6 @@ const TYPES = [
   { value: "deduction", label: "Deduction", hint: "Broker or CDC fees not tied to a trade" },
   { value: "adjustment", label: "Adjustment", hint: "Correction to match your broker statement" },
 ] as const;
-
-const selectClass =
-  "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30";
 
 export function CashForm({
   action,
@@ -53,13 +51,13 @@ export function CashForm({
       <Card>
         <CardContent className="grid gap-4 pt-4">
           <FormField label="Type" name="type" error={errors.type} hint={TYPES.find((t) => t.value === v.type)?.hint}>
-            <select {...fieldProps("type", errors)} className={selectClass} value={v.type} onChange={(e) => set("type", e.target.value as CashFormValues["type"])}>
+            <NativeSelect {...fieldProps("type", errors)} value={v.type} onChange={(e) => set("type", e.target.value as CashFormValues["type"])}>
               {TYPES.map((t) => (
                 <option key={t.value} value={t.value}>
                   {t.label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </FormField>
           {v.type === "adjustment" ? (
             <fieldset className="flex gap-4 text-sm">

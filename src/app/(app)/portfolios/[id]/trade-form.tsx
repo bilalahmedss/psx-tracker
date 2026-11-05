@@ -8,7 +8,11 @@ import { SymbolCombobox, type SecurityOption } from "@/components/symbol-combobo
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { negativeCashWarning } from "@/lib/engine/cash";
 import { computeFees, type FeeProfile } from "@/lib/engine/fees";
+import type { EngineCashEntry, EngineDividend, EngineTxn } from "@/lib/engine/types";
+
+export type CashContext = { txns: EngineTxn[]; dividends: EngineDividend[]; entries: EngineCashEntry[] };
 import { dec } from "@/lib/engine/money";
 import { formatPrice } from "@/lib/format";
 import { isDecimalString } from "@/lib/portfolio/rates";
@@ -37,9 +41,15 @@ export function TradeForm({
   submitLabel,
   feesStartEdited = false,
   returnTo,
+  cash,
+  editingTxnId = null,
 }: {
   /** Where to go after saving. */
   returnTo?: string;
+  /** The portfolio's current cash inputs, to warn (not block) if this trade takes cash negative. */
+  cash: CashContext;
+  /** The trade being edited, so it is replaced rather than counted twice. */
+  editingTxnId?: string | null;
   action: (prev: EntryFormState, fd: FormData) => Promise<EntryFormState>;
   securities: SecurityOption[];
   feeProfile: FeeProfile;
@@ -82,6 +92,29 @@ export function TradeForm({
   }, [v]);
 
   const heldNow = v.symbol ? held[v.symbol] : undefined;
+
+  const cashWarning = useMemo(() => {
+    if (!v.affectsCash || !isDecimalString(v.qty) || !isDecimalString(v.price) || !/^\d{4}-\d{2}-\d{2}$/.test(v.tradeDate)) return null;
+    const money = (x: string) => (isDecimalString(x) ? x : "0");
+    return negativeCashWarning(cash, {
+      replacesTxnId: editingTxnId,
+      txns: [
+        {
+          id: editingTxnId ?? "proposed",
+          symbol: v.symbol || "?",
+          type: v.type,
+          qty: v.qty,
+          price: v.price,
+          fee: money(v.fee),
+          tax: money(v.tax),
+          otherCharges: money(v.otherCharges),
+          tradeDate: v.tradeDate,
+          createdAt: "9999-12-31T00:00:00Z",
+          affectsCash: true,
+        },
+      ],
+    });
+  }, [cash, editingTxnId, v]);
 
   return (
     <form action={formAction} className="flex flex-col gap-6" noValidate>
@@ -189,6 +222,14 @@ export function TradeForm({
             )}
           </div>
 
+          {cashWarning ? (
+            <p role="status" className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+              {cashWarning.message}.{" "}
+              <span className="money">
+                It first drops below zero on {cashWarning.date}, to Rs {formatPrice(cashWarning.balance.toFixed())}.
+              </span>
+            </p>
+          ) : null}
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" name="affectsCash" checked={v.affectsCash} onChange={(e) => set("affectsCash", e.target.checked)} className="size-4 accent-primary" />
             {v.type === "buy" ? "Pay from portfolio cash" : "Add proceeds to portfolio cash"}

@@ -118,6 +118,13 @@
 }
 
 @layer base {
+  /* Native controls (select popups, date pickers, scrollbars) follow the theme. */
+  :root {
+    color-scheme: light;
+  }
+  .dark {
+    color-scheme: dark;
+  }
   * {
     @apply border-border outline-ring/50;
   }
