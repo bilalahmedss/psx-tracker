@@ -85,7 +85,7 @@ export function PriceTable({ rows }: { rows: QuoteRow[] }) {
         </table>
       </div>
       <p className="text-xs text-muted-foreground">
-        {filtered.length} of {rows.length} symbols. Refreshes every minute.
+        {filtered.length} of {rows.length} symbols. This page shows the latest stored prices and checks for new ones every minute.
       </p>
     </div>
   );

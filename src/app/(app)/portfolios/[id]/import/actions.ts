@@ -7,6 +7,7 @@ import type { EngineTxn } from "@/lib/engine/types";
 import { parseImport, type ImportResult } from "@/lib/csv/import";
 import { feeProfileOf, getPortfolioBook, getSecurityOptions } from "@/lib/portfolio/book";
 import { requireUser } from "@/lib/auth";
+import { formatPrice } from "@/lib/format";
 import { pktParts } from "@/lib/psx/calendar";
 
 const MAX_BYTES = 1_000_000;
@@ -86,7 +87,7 @@ async function analyse(portfolioId: string, text: string): Promise<{ preview: Im
         entries: parsed.cash.map((c, i) => ({ id: `csv-c${i}`, type: c.type, amount: c.amount, date: c.date, note: c.note, createdAt: stamp })),
       },
     );
-    if (warning) cashWarning = `${warning.message} (it first drops below zero on ${warning.date}, to Rs ${warning.balance.toFixed(2)}).`;
+    if (warning) cashWarning = `${warning.message} (it first drops below zero on ${warning.date}, to Rs ${formatPrice(warning.balance.toFixed(2))}).`;
   }
 
   const { trades, dividends, cash, ...rest } = parsed;
