@@ -65,7 +65,9 @@ async function PortfolioList() {
           <Card className="h-full">
             <CardHeader>
               <CardTitle className="flex min-w-0 items-center gap-2">
-                <span className="truncate">{p.name}</span>
+                <Link href={`/portfolios/${p.id}`} className="truncate hover:underline">
+                  {p.name}
+                </Link>
                 {p.isDefault ? (
                   <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Default</span>
                 ) : null}
@@ -86,7 +88,7 @@ async function PortfolioList() {
                 <dt className="text-muted-foreground">Tax status</dt>
                 <dd>{TAX_STATUS_LABEL[p.taxStatus]}</dd>
                 <dt className="text-muted-foreground">CGT rate</dt>
-                <dd>{p.taxStatus === "filer" ? p.cgt.filerRate : p.cgt.nonFilerRate}%</dd>
+                <dd>{p.taxStatus === "filer" ? "15% (2024 rule)" : `${p.cgt.nonFilerRate}%`}</dd>
                 <dt className="text-muted-foreground">Commission</dt>
                 <dd>
                   {p.fees.pctAbove}% at or above Rs {p.fees.threshold}; Rs {p.fees.perShareBelow}/share below

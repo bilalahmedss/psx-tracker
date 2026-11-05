@@ -18,6 +18,8 @@ export function isPublicPath(pathname: string): boolean {
     pathname === "/" ||
     pathname === "/login" ||
     pathname === "/forgot-password" ||
-    pathname.startsWith("/auth/")
+    pathname.startsWith("/auth/") ||
+    // Job endpoints authenticate with CRON_SECRET, not a user session.
+    pathname.startsWith("/api/jobs/")
   );
 }

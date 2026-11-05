@@ -74,7 +74,8 @@ describe("parsePortfolioForm", () => {
     ["pctAbove", "10"], // must be below 10%
     ["pctAbove", "0.12345"], // more than 4 dp
     ["fedPct", "100"],
-    ["filerRate", "100"],
+    ["nonFilerRate", "14.99"], // below the 15% floor
+    ["statusEffectiveFrom", "2026-02-30"],
     ["nonFilerRate", "abc"],
     ["threshold", ""],
     ["perShareBelow", "1e2"],
@@ -84,6 +85,17 @@ describe("parsePortfolioForm", () => {
     const r = parsePortfolioForm(form({ [field]: value }));
     expect(r.ok).toBe(false);
     expect(!r.ok && r.fieldErrors[field]).toBeTruthy();
+  });
+
+  it("accepts a 15% non-filer rate and a status change date", () => {
+    const r = parsePortfolioForm(form({ nonFilerRate: "15", statusEffectiveFrom: "2025-07-01" }));
+    expect(r.ok && r.data.statusEffectiveFrom).toBe("2025-07-01");
+    expect(r.ok && toRpcArgs(r.data).p_non_filer_rate).toBe("0.15");
+  });
+
+  it("treats a blank status date as not given", () => {
+    const r = parsePortfolioForm(form({ statusEffectiveFrom: "" }));
+    expect(r.ok && r.data.statusEffectiveFrom).toBeNull();
   });
 
   it("accepts zero fees (e.g. a zero-commission promo)", () => {

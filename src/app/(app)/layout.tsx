@@ -19,6 +19,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <Link href="/portfolios" className="text-muted-foreground hover:text-foreground">
               Portfolios
             </Link>
+            <Link href="/market" className="text-muted-foreground hover:text-foreground">
+              Market
+            </Link>
           </nav>
           <div className="ml-auto flex items-center gap-3">
             <Suspense fallback={<span className="h-4 w-32 animate-pulse rounded bg-muted" />}>

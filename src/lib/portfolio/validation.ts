@@ -1,6 +1,16 @@
 import Decimal from "decimal.js";
 import { z } from "zod";
+import { CGT_BRACKETS, NON_FILER_MIN_RATE } from "@/lib/engine/tax-rules";
 import { decimalPlaces, isDecimalString, percentToFraction } from "./rates";
+
+const latest = CGT_BRACKETS[0].filer;
+const FILER_RATE_2024 = latest.kind === "flat" ? latest.rate : "0.15";
+
+export function isIsoDate(v: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+}
 
 type Bounds = { label: string; max: string; maxDp: number; exclusiveMax?: boolean };
 
@@ -26,8 +36,16 @@ export const portfolioFormSchema = z.object({
     .transform((v) => (v === "" ? null : v))
     .pipe(z.uuid("Choose a broker from the list").nullable()),
   taxStatus: z.enum(["filer", "non_filer"], { error: "Choose filer or non-filer" }),
-  filerRate: decimalField({ label: "Filer CGT rate", max: "100", maxDp: 4, exclusiveMax: true }),
-  nonFilerRate: decimalField({ label: "Non-filer CGT rate", max: "100", maxDp: 4, exclusiveMax: true }),
+  /** When a changed status takes effect. Empty = today (edit) or from the start (create). */
+  statusEffectiveFrom: z
+    .string()
+    .trim()
+    .refine((v) => v === "" || isIsoDate(v), "Enter a valid date")
+    .transform((v) => (v === "" ? null : v)),
+  nonFilerRate: decimalField({ label: "Non-filer CGT rate", max: "100", maxDp: 4, exclusiveMax: true }).refine(
+    (v) => !isDecimalString(v) || new Decimal(v).gte(new Decimal(NON_FILER_MIN_RATE).mul(100)),
+    "Non-filer CGT rate can't be below 15%",
+  ),
   threshold: decimalField({ label: "Price threshold", max: "10000", maxDp: 4 }),
   pctAbove: decimalField({ label: "Commission %", max: "10", maxDp: 4, exclusiveMax: true }),
   perShareBelow: decimalField({ label: "Commission per share", max: "100", maxDp: 4 }),
@@ -63,7 +81,8 @@ export function toRpcArgs(form: PortfolioForm): PortfolioRpcArgs {
     p_name: form.name,
     p_broker_id: form.brokerId,
     p_tax_status: form.taxStatus,
-    p_filer_rate: percentToFraction(form.filerRate),
+    // Filer rates come from the dated rule set (tax-rules.ts); stored for reference only.
+    p_filer_rate: FILER_RATE_2024,
     p_non_filer_rate: percentToFraction(form.nonFilerRate),
     p_threshold: form.threshold,
     p_pct_above: percentToFraction(form.pctAbove),

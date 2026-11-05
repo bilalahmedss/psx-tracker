@@ -33,7 +33,15 @@ async function NewPortfolioForm() {
       submitLabel="Create portfolio"
       brokers={brokers}
       defaults={defaults}
-      initial={{ name: "", brokerId: "", taxStatus: "filer", isDefault: false, ...defaults.cgt, ...defaults.fees }}
+      initial={{
+        name: "",
+        brokerId: "",
+        taxStatus: "filer",
+        statusEffectiveFrom: "",
+        isDefault: false,
+        nonFilerRate: defaults.cgt.nonFilerRate,
+        ...defaults.fees,
+      }}
     />
   );
 }

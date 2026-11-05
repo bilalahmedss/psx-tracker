@@ -190,6 +190,8 @@ export const cgtRules = pgTable(
   (t) => [
     index("cgt_rules_user_id_idx").on(t.userId),
     check("cgt_rules_rate_range", sql`filer_rate >= 0 and filer_rate < 1 and non_filer_rate >= 0 and non_filer_rate < 1`),
+    // Non-ATL CGT follows income-tax slabs with a 15% floor (see src/lib/engine/tax-rules.ts).
+    check("cgt_rules_non_filer_floor", sql`non_filer_rate >= 0.15`),
     ...rulePolicies("cgt_rules"),
   ],
 ).enableRLS();
@@ -277,6 +279,77 @@ export const notices = pgTable(
   (t) => [index("notices_symbol_idx").on(t.symbol, t.publishedAt), marketRead("notices")],
 ).enableRLS();
 
+export const calendarStatus = pgEnum("calendar_status", ["confirmed", "to_confirm"]);
+export const jobStatus = pgEnum("job_status", ["running", "success", "skipped", "failed"]);
+
+/** Latest quote per symbol, refreshed by the price job. */
+export const pricesLatest = pgTable(
+  "prices_latest",
+  {
+    symbol: text("symbol")
+      .primaryKey()
+      .references(() => securities.symbol, { onDelete: "cascade" }),
+    price: price("price").notNull(),
+    prevClose: price("prev_close"),
+    change: price("change"),
+    changePct: numeric("change_pct", { precision: 10, scale: 4 }),
+    open: price("open"),
+    high: price("high"),
+    low: price("low"),
+    volume: bigint("volume", { mode: "number" }),
+    /** When the source says the quote is from (may lag for delayed sources). */
+    asOf: timestamp("as_of", { withTimezone: true }).notNull(),
+    source: text("source").notNull(),
+    delayed: boolean("delayed").notNull().default(false),
+    updatedAt: updatedAt(),
+  },
+  () => [marketRead("prices_latest")],
+).enableRLS();
+
+/** Days PSX is closed. Lunar dates stay "to_confirm" until PSX's notice is checked. */
+export const marketHolidays = pgTable(
+  "market_holidays",
+  {
+    date: date("date").primaryKey(),
+    name: text("name").notNull(),
+    status: calendarStatus("status").notNull().default("to_confirm"),
+    note: text("note"),
+  },
+  () => [marketRead("market_holidays")],
+).enableRLS();
+
+/** Days with non-standard hours (e.g. Ramazan). Sessions are PKT "HH:MM" pairs. */
+export const marketSessions = pgTable(
+  "market_sessions",
+  {
+    date: date("date").primaryKey(),
+    name: text("name").notNull(),
+    sessions: jsonb("sessions").notNull().$type<{ open: string; close: string }[]>(),
+    status: calendarStatus("status").notNull().default("to_confirm"),
+  },
+  () => [marketRead("market_sessions")],
+).enableRLS();
+
+/** Background job history. At most one running row per job acts as a lock. */
+export const jobRuns = pgTable(
+  "job_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    job: text("job").notNull(),
+    status: jobStatus("status").notNull().default("running"),
+    source: text("source"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    rows: integer("rows"),
+    message: text("message"),
+  },
+  (t) => [
+    index("job_runs_job_started_idx").on(t.job, t.startedAt),
+    uniqueIndex("job_runs_one_running").on(t.job).where(sql`status = 'running'`),
+    marketRead("job_runs"),
+  ],
+).enableRLS();
+
 // ---------- portfolios ----------
 
 export const portfolios = pgTable(
@@ -310,6 +383,27 @@ export const portfolios = pgTable(
           ` and (portfolios.cgt_rule_id is null or exists (select 1 from public.cgt_rules c where c.id = portfolios.cgt_rule_id and c.user_id = (select auth.uid())))`,
       ),
     ),
+  ],
+).enableRLS();
+
+/**
+ * Filer (ATL) status over time. The status in force on a date is the latest row
+ * with effective_from on or before that date. portfolios.tax_status mirrors the current one.
+ */
+export const portfolioTaxStatus = pgTable(
+  "portfolio_tax_status",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    portfolioId: uuid("portfolio_id")
+      .notNull()
+      .references(() => portfolios.id, { onDelete: "cascade" }),
+    status: taxStatus("status").notNull(),
+    effectiveFrom: date("effective_from").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("portfolio_tax_status_portfolio_date_key").on(t.portfolioId, t.effectiveFrom),
+    ...portfolioPolicies("portfolio_tax_status"),
   ],
 ).enableRLS();
 
@@ -382,8 +476,12 @@ export const transactions = pgTable(
     type: txnType("type").notNull(),
     qty: qty("qty").notNull(),
     price: price("price").notNull().default("0"),
+    /** Broker commission. */
     fee: money("fee").notNull().default("0"),
+    /** Sales tax / FED on the commission. */
     tax: money("tax").notNull().default("0"),
+    /** CDC, NCCPL, SECP and similar charges. Added to cost on buys, deducted from proceeds on sells. */
+    otherCharges: money("other_charges").notNull().default("0"),
     tradeDate: date("trade_date").notNull(),
     settleDate: date("settle_date"),
     source: entrySource("source").notNull().default("manual"),
@@ -395,7 +493,7 @@ export const transactions = pgTable(
   },
   (t) => [
     index("transactions_portfolio_symbol_idx").on(t.portfolioId, t.symbol, t.tradeDate),
-    check("transactions_positive", sql`qty > 0 and price >= 0 and fee >= 0 and tax >= 0`),
+    check("transactions_positive", sql`qty > 0 and price >= 0 and fee >= 0 and tax >= 0 and other_charges >= 0`),
     ...portfolioPolicies("transactions"),
   ],
 ).enableRLS();
@@ -456,13 +554,19 @@ export const dividendReceipts = pgTable(
     wht: money("wht").notNull().default("0"),
     zakatDeducted: money("zakat_deducted").notNull().default("0"),
     net: money("net").notNull(),
+    /** Shares that earned the dividend and dividend per share (optional). */
+    shares: qty("shares"),
+    dps: price("dps"),
+    /** PSX dividends are usually paid to the bank, not the broker, so off by default. */
+    affectsCash: boolean("affects_cash").notNull().default(false),
+    note: text("note"),
     paidOn: date("paid_on").notNull(),
     source: entrySource("source").notNull().default("manual"),
     createdAt: createdAt(),
   },
   (t) => [
     index("dividend_receipts_portfolio_idx").on(t.portfolioId, t.symbol),
-    check("dividend_receipts_non_negative", sql`gross >= 0 and wht >= 0 and zakat_deducted >= 0`),
+    check("dividend_receipts_non_negative", sql`gross >= 0 and wht >= 0 and zakat_deducted >= 0 and net >= 0`),
     ...portfolioPolicies("dividend_receipts"),
   ],
 ).enableRLS();
@@ -482,7 +586,16 @@ export const cashEntries = pgTable(
     linkedTxnId: uuid("linked_txn_id").references(() => transactions.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
-  (t) => [index("cash_entries_portfolio_idx").on(t.portfolioId, t.date), ...portfolioPolicies("cash_entries")],
+  (t) => [
+    index("cash_entries_portfolio_idx").on(t.portfolioId, t.date),
+    // Trade and dividend cash lines are derived from transactions, so only manual types are stored.
+    check("cash_entries_manual_types", sql`type in ('deposit', 'withdrawal', 'adjustment', 'deduction')`),
+    check(
+      "cash_entries_sign",
+      sql`(type = 'deposit' and amount > 0) or (type in ('withdrawal', 'deduction') and amount < 0) or (type = 'adjustment' and amount <> 0)`,
+    ),
+    ...portfolioPolicies("cash_entries"),
+  ],
 ).enableRLS();
 
 export const snapshots = pgTable(

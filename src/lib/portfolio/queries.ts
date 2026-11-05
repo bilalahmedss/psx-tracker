@@ -29,7 +29,8 @@ export type PortfolioSummary = {
   cgt: CgtFormValues;
 };
 
-export type PortfolioDetail = PortfolioSummary & { brokerId: string | null; updatedAt: string };
+export type TaxStatusChange = { id: string; status: "filer" | "non_filer"; effectiveFrom: string };
+export type PortfolioDetail = PortfolioSummary & { brokerId: string | null; updatedAt: string; taxHistory: TaxStatusChange[] };
 
 type PortfolioRow = {
   id: string;
@@ -39,6 +40,7 @@ type PortfolioRow = {
   broker_id: string | null;
   updated_at: string;
   brokers: { name: string } | null;
+  portfolio_tax_status: { id: string; status: "filer" | "non_filer"; effective_from: string }[] | null;
   fee_profiles: FeeProfileRow | null;
   cgt_rules: CgtRuleRow | null;
 };
@@ -46,7 +48,8 @@ type PortfolioRow = {
 const PORTFOLIO_SELECT = `id, name, tax_status, is_default, broker_id, updated_at,
   brokers!portfolios_broker_id_brokers_id_fk(name),
   fee_profiles!portfolios_fee_profile_id_fee_profiles_id_fk(${FEE_COLS}),
-  cgt_rules!portfolios_cgt_rule_id_cgt_rules_id_fk(${CGT_COLS})`;
+  cgt_rules!portfolios_cgt_rule_id_cgt_rules_id_fk(${CGT_COLS}),
+  portfolio_tax_status(id, status, effective_from)`;
 
 function toDetail(row: PortfolioRow): PortfolioDetail {
   return {
@@ -56,6 +59,9 @@ function toDetail(row: PortfolioRow): PortfolioDetail {
     isDefault: row.is_default,
     brokerId: row.broker_id,
     updatedAt: row.updated_at,
+    taxHistory: (row.portfolio_tax_status ?? [])
+      .map((h) => ({ id: h.id, status: h.status, effectiveFrom: h.effective_from }))
+      .sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom)),
     brokerName: row.brokers?.name ?? null,
     fees: row.fee_profiles ? feeRowToForm(row.fee_profiles) : PSX_DEFAULT_FEES,
     cgt: row.cgt_rules ? cgtRowToForm(row.cgt_rules) : PSX_DEFAULT_CGT,

@@ -45,7 +45,11 @@ export async function updatePortfolio(
   const parsed = parsePortfolioForm(fd);
   if (!parsed.ok) return { fieldErrors: parsed.fieldErrors };
 
-  const { error } = await supabase.rpc("update_portfolio", { p_id: id, ...toRpcArgs(parsed.data) });
+  const { error } = await supabase.rpc("update_portfolio", {
+    p_id: id,
+    ...toRpcArgs(parsed.data),
+    p_status_effective_from: parsed.data.statusEffectiveFrom,
+  });
   if (error) return rpcErrorMessage(error);
 
   revalidatePath("/portfolios", "layout");
@@ -72,4 +76,12 @@ export async function deletePortfolio(id: string, _prev: DeleteState, fd: FormDa
 
   revalidatePath("/portfolios", "layout");
   redirect("/portfolios");
+}
+
+export async function deleteTaxStatusChange(portfolioId: string, changeId: string): Promise<void> {
+  const { supabase } = await requireUser();
+  const { error } = await supabase.rpc("delete_tax_status_change", { p_change_id: changeId });
+  if (error && error.code !== "P0002") console.error("delete_tax_status_change failed", error.code, error.message);
+  revalidatePath("/portfolios", "layout");
+  redirect(`/portfolios/${portfolioId}/edit`);
 }

@@ -15,7 +15,9 @@
     "check:supabase": "node --env-file-if-exists=.env.local scripts/check-supabase.mjs",
     "test:rls": "node --env-file-if-exists=.env.local scripts/test-rls.mjs",
     "db:inspect": "node --env-file-if-exists=.env.local scripts/db-inspect.mjs",
-    "dev-user": "node --env-file-if-exists=.env.local scripts/dev-user.mjs"
+    "dev-user": "node --env-file-if-exists=.env.local scripts/dev-user.mjs",
+    "jobs:dev": "node --env-file-if-exists=.env.local scripts/jobs-dev.mjs",
+    "job": "node --env-file-if-exists=.env.local scripts/jobs-dev.mjs once"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

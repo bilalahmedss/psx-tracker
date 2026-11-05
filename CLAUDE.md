@@ -49,12 +49,24 @@ Drizzle connects with `DATABASE_URL` as a privileged Postgres role and **bypasse
 - `DATABASE_URL`: transaction pooler (port 6543). Used at runtime by jobs. postgres-js **must** use `prepare: false` with it.
 - `DIRECT_URL`: session pooler or direct connection (port 5432). Used by `drizzle-kit` for migrations.
 
-## PSX data rule (PLAN.md §4b)
+## Portfolio engine
 
-- All PSX scraping and data-portal access lives in **`src/lib/psx/`**, so a PSX layout change is a one-folder fix.
-- Never call PSX from the browser. The app reads only from our own database/API.
-- Cache everything; send a polite User-Agent; rate-limit requests.
-- Scraped data is unlicensed: fine for personal use and testing; check PSX terms before charging users.
+- `src/lib/engine/` is pure TypeScript with exact decimals: fees, FIFO lots, P&L, CGT, dividends, cash ledger. `buildPortfolio()` rebuilds everything from transactions on every request; derived figures are never stored by user code.
+- All tax rates live in one dated rule set, `src/lib/engine/tax-rules.ts` (last checked Nov 2026, Finance Act 2026). Add new dated brackets for budget changes; don't edit old ones.
+- Filer status is dated (`portfolio_tax_status`); the filer CGT rate needs ATL status on both buy and sell dates. The non-filer rate for post-July-2024 acquisitions is user-entered per portfolio (min 15%).
+- Cash ledger: only manual entries are stored in `cash_entries`; trade and dividend lines are derived.
+- Every write that changes trades is re-checked with `runFifo` so no sale can exceed holdings.
+- Known gaps are listed in `docs/backlog.md`.
+
+## Market data rule (PLAN.md §4b)
+
+- All market-data access lives in **`src/lib/psx/`** behind the `MarketDataSource` interface (`types.ts`). Providers are files in `src/lib/psx/sources/` (`demo.ts`, `eodhd.ts`); `MARKET_DATA_SOURCE` picks one. A new provider = one new file.
+- Never call a provider from the browser or from user-request code. Jobs (`src/jobs/`) fetch and store; pages read only from Supabase (`prices_latest`, `prices`, `securities`).
+- All provider HTTP goes through `PoliteClient` (`http.ts`): serial, minimum gap, backoff, secrets redacted.
+- **Do not scrape dps.psx.com.pk.** Its data endpoints are protected by a client token; never reverse-engineer or bypass bot protection on any site.
+- Delayed sources (EODHD, ~15-20 min) must be labelled "delayed" wherever their prices appear. Demo data must be labelled "Demo data".
+- Market hours and holidays come from `calendar.ts` + `market_holidays` / `market_sessions`, all in PKT. Lunar holidays and Friday hours stay "to confirm" until checked against the PSX notice.
+- Job endpoints: `/api/jobs/prices` and `/api/jobs/eod`, Bearer `CRON_SECRET`. Locally `npm run jobs:dev`; production schedule in `docs/cron.md`.
 
 ## Data model (PLAN.md §5)
 
@@ -91,3 +103,5 @@ A user owns portfolios; a portfolio owns transactions. **Holdings, lots and real
 - `npm run db:inspect`: read-only check of RLS status, policy counts and seed data
 - `npm run dev-user -- create|delete`: confirmed local test login, stored in `.env.local` as `DEV_USER_EMAIL` / `DEV_USER_PASSWORD`
 - `npm run check:supabase`: verify `.env.local` keys and connections
+- `npm run jobs:dev`: local scheduler (needs `npm run dev` running)
+- `npm run job -- prices|eod [--force] [--date=YYYY-MM-DD]`: run one job once

@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FormNotice } from "@/components/auth-shell";
+import { NON_FILER_RATE_LABEL, TAX_RULES_LAST_CHECKED } from "@/lib/engine/tax-rules";
 import type { CgtFormValues, FeeFormValues } from "@/lib/portfolio/defaults";
 import type { BrokerOption } from "@/lib/portfolio/queries";
 import type { FieldErrors, PortfolioField } from "@/lib/portfolio/validation";
@@ -16,9 +17,10 @@ export type PortfolioFormValues = {
   name: string;
   brokerId: string;
   taxStatus: "filer" | "non_filer";
+  statusEffectiveFrom: string;
   isDefault: boolean;
-} & CgtFormValues &
-  FeeFormValues;
+  nonFilerRate: string;
+} & FeeFormValues;
 
 type Props = {
   action: (prev: PortfolioFormState, fd: FormData) => Promise<PortfolioFormState>;
@@ -26,16 +28,21 @@ type Props = {
   brokers: BrokerOption[];
   defaults: { fees: FeeFormValues; cgt: CgtFormValues };
   initial: PortfolioFormValues;
+  /** Editing: the status in force today, so a change asks for an effective date. */
+  currentStatus?: "filer" | "non_filer";
+  /** Rendered under the tax fields (status history on the edit page). */
+  taxHistory?: React.ReactNode;
 };
 
 const selectClass =
   "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive md:text-sm dark:bg-input/30";
 
-export function PortfolioForm({ action, submitLabel, brokers, defaults, initial }: Props) {
+export function PortfolioForm({ action, submitLabel, brokers, defaults, initial, currentStatus, taxHistory }: Props) {
   const [state, formAction, pending] = useActionState(action, undefined);
   // Controlled inputs so values survive a failed submit (React resets uncontrolled forms).
   const [values, setValues] = useState<PortfolioFormValues>(initial);
   const errors: FieldErrors = state?.fieldErrors ?? {};
+  const statusChanged = currentStatus !== undefined && values.taxStatus !== currentStatus;
 
   const set = <K extends keyof PortfolioFormValues>(key: K, value: PortfolioFormValues[K]) =>
     setValues((v) => ({ ...v, [key]: value }));
@@ -100,13 +107,13 @@ export function PortfolioForm({ action, submitLabel, brokers, defaults, initial 
         <CardHeader>
           <CardTitle>Tax</CardTitle>
           <CardDescription>
-            Capital gains tax estimates. Defaults are for shares bought on or after 1 July 2024; confirm rates with a tax adviser.
+            Capital gains tax estimates, not tax advice. Rules last checked {TAX_RULES_LAST_CHECKED}.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
           <fieldset className="grid gap-2">
-            <legend className="mb-1 text-sm font-medium">Tax status</legend>
-            <div className="flex gap-4 text-sm">
+            <legend className="mb-1 text-sm font-medium">{statusChanged ? "New tax status" : "Tax status"}</legend>
+            <div className="flex flex-wrap gap-4 text-sm">
               {(["filer", "non_filer"] as const).map((s) => (
                 <label key={s} className="flex items-center gap-2">
                   <input
@@ -123,23 +130,32 @@ export function PortfolioForm({ action, submitLabel, brokers, defaults, initial 
             </div>
             {errors.taxStatus ? <p className="text-xs text-destructive">{errors.taxStatus}</p> : null}
           </fieldset>
-          <div className="grid gap-4 sm:grid-cols-2">
+          {statusChanged ? (
             <Field
-              label="CGT rate for filers"
-              name="filerRate"
-              suffix="%"
-              error={errors.filerRate}
-              hint={values.taxStatus === "filer" ? "Applies to this portfolio" : undefined}
+              label="Status change takes effect from"
+              name="statusEffectiveFrom"
+              error={errors.statusEffectiveFrom}
+              hint="Trades before this date keep the earlier status."
             >
-              <Input {...field("filerRate")} inputMode="decimal" value={values.filerRate} onChange={(e) => set("filerRate", e.target.value)} />
+              <Input
+                {...field("statusEffectiveFrom")}
+                type="date"
+                value={values.statusEffectiveFrom}
+                onChange={(e) => set("statusEffectiveFrom", e.target.value)}
+              />
             </Field>
-            <Field
-              label="CGT rate for non-filers"
-              name="nonFilerRate"
-              suffix="%"
-              error={errors.nonFilerRate}
-              hint={values.taxStatus === "non_filer" ? "Applies to this portfolio" : undefined}
-            >
+          ) : (
+            <input type="hidden" name="statusEffectiveFrom" value="" />
+          )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid content-start gap-1.5 text-sm">
+              <span className="font-medium">Filer CGT rate</span>
+              <p className="text-muted-foreground">
+                15% for shares bought from 1 Jul 2024. Older shares follow the dated schedule. Needs ATL status on both the
+                buy and sell dates.
+              </p>
+            </div>
+            <Field label="Non-filer CGT rate" name="nonFilerRate" suffix="%" error={errors.nonFilerRate} hint={NON_FILER_RATE_LABEL}>
               <Input
                 {...field("nonFilerRate")}
                 inputMode="decimal"
@@ -148,6 +164,7 @@ export function PortfolioForm({ action, submitLabel, brokers, defaults, initial 
               />
             </Field>
           </div>
+          {taxHistory}
         </CardContent>
       </Card>
 

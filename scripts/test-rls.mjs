@@ -96,6 +96,7 @@ try {
     p_broker_id: null,
     p_is_default: true,
     ...PSX_FEES,
+    p_status_effective_from: null,
   });
   check("B's update_portfolio on A's portfolio fails as not found", rpcUpdateErr?.code === "P0002", rpcUpdateErr?.message);
 
@@ -118,6 +119,50 @@ try {
     .insert({ portfolio_id: aPortfolioId, type: "deposit", amount: "1000", date: "2026-01-01" });
   check("B can't add cash entries to A's portfolio", cashErr?.code === "42501", cashErr?.message);
 
+  const { data: aTxn, error: aTxnErr } = await a.client
+    .from("transactions")
+    .insert({ portfolio_id: aPortfolioId, symbol: "OGDC", type: "buy", qty: "100", price: "200", fee: "30", tax: "4.5", other_charges: "2", trade_date: "2025-01-10" })
+    .select("id")
+    .single();
+  check("A can add a trade to own portfolio", !aTxnErr && aTxn?.id, aTxnErr?.message);
+  const { error: aDivErr } = await a.client
+    .from("dividend_receipts")
+    .insert({ portfolio_id: aPortfolioId, symbol: "OGDC", gross: "550", wht: "82.5", net: "467.5", paid_on: "2025-04-01", shares: "100", dps: "5.5" });
+  check("A can add a dividend to own portfolio", !aDivErr, aDivErr?.message);
+
+  const { data: bTxns } = await b.client.from("transactions").select("id").eq("portfolio_id", aPortfolioId);
+  check("B can't read A's trades", bTxns?.length === 0);
+  const { data: bDivs } = await b.client.from("dividend_receipts").select("id").eq("portfolio_id", aPortfolioId);
+  check("B can't read A's dividends", bDivs?.length === 0);
+  const { data: bStatus } = await b.client.from("portfolio_tax_status").select("id").eq("portfolio_id", aPortfolioId);
+  check("B can't read A's tax status history", bStatus?.length === 0);
+
+  const { error: bTxnErr } = await b.client
+    .from("transactions")
+    .insert({ portfolio_id: aPortfolioId, symbol: "OGDC", type: "sell", qty: "100", price: "1", trade_date: "2025-02-01" });
+  check("B can't add trades to A's portfolio", bTxnErr?.code === "42501", bTxnErr?.message);
+  const { data: bTxnUpd } = await b.client.from("transactions").update({ qty: "1" }).eq("id", aTxn?.id).select();
+  check("B can't edit A's trades", bTxnUpd?.length === 0);
+  const { data: bTxnDel } = await b.client.from("transactions").delete().eq("id", aTxn?.id).select();
+  check("B can't delete A's trades", bTxnDel?.length === 0);
+  const { error: bDivErr } = await b.client
+    .from("dividend_receipts")
+    .insert({ portfolio_id: aPortfolioId, symbol: "OGDC", gross: "1", wht: "0", net: "1", paid_on: "2025-04-01" });
+  check("B can't add dividends to A's portfolio", bDivErr?.code === "42501", bDivErr?.message);
+  const { error: bStatusErr } = await b.client
+    .from("portfolio_tax_status")
+    .insert({ portfolio_id: aPortfolioId, status: "non_filer", effective_from: "2025-01-01" });
+  check("B can't change A's tax status history", bStatusErr?.code === "42501", bStatusErr?.message);
+
+  const { error: badCashErr } = await a.client
+    .from("cash_entries")
+    .insert({ portfolio_id: aPortfolioId, type: "buy", amount: "-5", date: "2025-01-10" });
+  check("trade lines can't be stored as cash entries (they are derived)", badCashErr?.code === "23514", badCashErr?.message);
+  const { error: badSignErr } = await a.client
+    .from("cash_entries")
+    .insert({ portfolio_id: aPortfolioId, type: "withdrawal", amount: "500", date: "2025-01-10" });
+  check("withdrawals must be stored as negative amounts", badSignErr?.code === "23514", badSignErr?.message);
+
   const { data: aStill } = await a.client.from("portfolios").select("name").eq("id", aPortfolioId).single();
   check("A's portfolio is unchanged", aStill?.name === "A main");
 
@@ -137,6 +182,23 @@ try {
   const { error: secInsertErr } = await b.client.from("securities").insert({ symbol: "FAKE", name: "Fake Co" });
   check("users can't write market data", secInsertErr?.code === "42501", secInsertErr?.message);
 
+  for (const table of ["prices_latest", "market_holidays", "market_sessions", "job_runs"]) {
+    const { error: readErr } = await b.client.from(table).select("*").limit(1);
+    check(`signed-in users can read ${table}`, !readErr, readErr?.message);
+  }
+  const { data: holidaysAnon } = await anon.from("market_holidays").select("date");
+  check("signed-out visitors can't read market_holidays", holidaysAnon?.length === 0);
+  const { error: holidayInsertErr } = await b.client.from("market_holidays").insert({ date: "2099-01-01", name: "Fake" });
+  check("users can't add market holidays", holidayInsertErr?.code === "42501", holidayInsertErr?.message);
+  const { error: jobInsertErr } = await b.client.from("job_runs").insert({ job: "fake" });
+  check("users can't write job_runs", jobInsertErr?.code === "42501", jobInsertErr?.message);
+  const { error: priceInsertErr } = await b.client
+    .from("prices_latest")
+    .insert({ symbol: "OGDC", price: "1", as_of: new Date().toISOString(), source: "fake" });
+  check("users can't write prices_latest", priceInsertErr?.code === "42501", priceInsertErr?.message);
+  const { data: holidayUpdated } = await b.client.from("market_holidays").update({ name: "hacked" }).neq("date", "1900-01-01").select();
+  check("users can't edit market holidays", holidayUpdated?.length === 0);
+
   const { data: anonBrokers } = await anon.from("brokers").select("id");
   check("signed-out visitors can't read brokers", anonBrokers?.length === 0);
 
@@ -151,9 +213,44 @@ try {
     p_is_default: true,
     ...PSX_FEES,
     p_pct_above: "0.001",
+    p_status_effective_from: null,
   });
   const { data: aFeeAfter } = await a.client.from("fee_profiles").select("pct_above").eq("id", aRow.fee_profile_id).single();
   check("A can update own portfolio and fees", !aUpdateErr && Number(aFeeAfter?.pct_above) === 0.001, aUpdateErr?.message);
+
+  const { data: startStatus } = await a.client.from("portfolio_tax_status").select("status, effective_from").eq("portfolio_id", aPortfolioId);
+  check("a new portfolio starts with one status row 'from the start'", startStatus?.length === 1 && startStatus[0].effective_from === "1900-01-01");
+
+  const { error: statusErr } = await a.client.rpc("update_portfolio", {
+    p_id: aPortfolioId,
+    p_name: "A renamed",
+    p_broker_id: null,
+    p_is_default: true,
+    ...PSX_FEES,
+    p_tax_status: "non_filer",
+    p_status_effective_from: "2025-07-01",
+  });
+  const { data: statusRows } = await a.client
+    .from("portfolio_tax_status")
+    .select("id, status, effective_from")
+    .eq("portfolio_id", aPortfolioId)
+    .order("effective_from");
+  const { data: aNow } = await a.client.from("portfolios").select("tax_status").eq("id", aPortfolioId).single();
+  check(
+    "a status change is recorded with its effective date",
+    !statusErr && statusRows?.length === 2 && statusRows[1].status === "non_filer" && statusRows[1].effective_from === "2025-07-01",
+    statusErr?.message,
+  );
+  check("the portfolio shows today's status", aNow?.tax_status === "non_filer");
+
+  const { error: undoErr } = await a.client.rpc("delete_tax_status_change", { p_change_id: statusRows?.[1]?.id });
+  const { data: aAfterUndo } = await a.client.from("portfolios").select("tax_status").eq("id", aPortfolioId).single();
+  check("removing a status change restores the earlier status", !undoErr && aAfterUndo?.tax_status === "filer", undoErr?.message);
+  const { error: undoStartErr } = await a.client.rpc("delete_tax_status_change", { p_change_id: statusRows?.[0]?.id });
+  check("the starting status can't be removed", undoStartErr?.code === "22023", undoStartErr?.message);
+
+  const { error: floorErr } = await a.client.rpc("create_portfolio", { p_name: "Low rate", p_broker_id: null, p_is_default: false, ...PSX_FEES, p_non_filer_rate: "0.10" });
+  check("non-filer CGT rate below 15% is rejected", floorErr?.code === "23514", floorErr?.message);
 
   const { data: second } = await a.client.rpc("create_portfolio", { p_name: "A second", p_broker_id: null, p_is_default: true, ...PSX_FEES });
   const { data: defaults } = await a.client.from("portfolios").select("id").eq("is_default", true);

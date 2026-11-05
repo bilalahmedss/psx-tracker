@@ -22,6 +22,9 @@ describe("isPublicPath", () => {
     for (const p of ["/", "/login", "/forgot-password", "/auth/callback"]) expect(isPublicPath(p)).toBe(true);
   });
   it("protects app pages", () => {
-    for (const p of ["/portfolios", "/portfolios/new", "/reset-password", "/loginx"]) expect(isPublicPath(p)).toBe(false);
+    for (const p of ["/portfolios", "/portfolios/new", "/reset-password", "/loginx", "/market", "/api/other"]) expect(isPublicPath(p)).toBe(false);
+  });
+  it("lets job endpoints through (they check CRON_SECRET)", () => {
+    expect(isPublicPath("/api/jobs/prices")).toBe(true);
   });
 });

@@ -135,42 +135,47 @@ Observed: the web app is **Next.js (App Router, React Server Components)** behin
 | Exports | CSV generation |
 | Support | WhatsApp link, user code for lookup; no admin UI visible but one surely exists for parser fixes |
 
-## 4b. How the data and AI work (to replicate)
+## 4b. How the data and AI work
 
-SmartPSX's app never talks to PSX directly. Its own backend collects data from the public PSX Data Portal on a schedule, stores it, and the app reads only from its own API. Build yours the same way.
+Like SmartPSX, our app never talks to a data provider from the browser. Server jobs fetch market data on a schedule, store it in Supabase, and every page reads only from our own database.
 
-**Endpoints the SmartPSX app calls (observed)**
+**Update (5 Nov 2026): scraping dps.psx.com.pk is not an option.** The PSX Data Portal's old paths (`/market-watch`, `/symbols`, `/timeseries/...`) now 404, and the endpoints its own site uses require a client-generated request token and return 403 to scripts. That is deliberate bot protection, and we don't work around it. PSX licenses market data through its [data vending programme](https://www.psx.com.pk/psx/product-and-services/data-services-vending), so we use a provider instead.
 
-- `/api/market/status` (open/closed), `/api/indices` (KSE-100 etc.)
-- `/api/stocks/{symbol}` (quote), `/eod` (daily history), `/intraday` (today's chart), `/company` (fundamentals)
-- `/api/email/pending-trades`, `/api/email/pending-dividends` (parsed items awaiting review)
-- `/api/portfolios`, `/api/watchlists`, `/api/user/preferences`, `/api/app/version`
-- Logos served from its own media host
+**Adapter design (`src/lib/psx/`)**
 
-**Data sources to use (PSX Data Portal, dps.psx.com.pk, unofficial and scraped)**
+All market-data access lives in `src/lib/psx/`, so changing provider is a one-file change.
 
-| Data | Portal path | How often |
+| File | Role |
+| --- | --- |
+| `types.ts` | `MarketDataSource` interface: `listSymbols()`, `getQuotes(symbols)`, `getDailyHistory(symbol, from, to)`, optional `getEodBulk(date)`, plus `delayed` / `delayNote` flags |
+| `sources/demo.ts` | Deterministic simulated prices that move only during PSX sessions. Default; for development and tests |
+| `sources/eodhd.ts` | [EODHD](https://eodhd.com) (`.KAR` tickers). Quotes are ~15-20 min delayed, so the UI labels them "delayed" |
+| `index.ts` | `getMarketSource()` picks the provider from `MARKET_DATA_SOURCE=demo\|eodhd` |
+| `http.ts` | Polite client: one request at a time, minimum gap, timeouts, backoff on 429/5xx honouring `Retry-After`, secrets redacted from errors |
+| `calendar.ts` | PSX hours and holidays in PKT (UTC+5): open/closed, next open/close, trading days |
+
+Other providers to consider: [Capital Stake](https://www.capitalstake.com/docs/rest/api/stocks/intro) (authorised PSX vendor, real-time) or a direct PSX licence. A new provider is one new file in `sources/` implementing the interface.
+
+**Market calendar**
+
+- Mon-Thu 09:30-15:30 PKT; Friday 09:15-12:00 and 14:30-16:30 (Friday hours **to confirm**).
+- `market_holidays` holds closures; lunar dates and anything not checked against the PSX notice are `to_confirm`, and the UI shows a "To confirm" badge.
+- `market_sessions` holds days with special hours (e.g. Ramazan).
+
+**Jobs (`src/jobs/`, run through `/api/jobs/[job]` with a `CRON_SECRET` bearer token)**
+
+1. *Price job* (`prices`, every minute): skips when the market is closed (5-minute grace after each session), otherwise fetches quotes for tracked symbols (held, watched, plus a default liquid list) and upserts `prices_latest`. Later: evaluate price/P&L alerts.
+2. *End-of-day job* (`eod`, 17:00 PKT on weekdays): syncs the symbol list into `securities`, stores the day's candles in `prices`, and backfills up to 5 symbols' history per run.
+3. *Notice poller* (later): PSX announcements → PDF text → LLM summary → per symbol. Needs a sanctioned source too.
+4. *Import pipeline* (later): email/PDF/screenshot → OCR → broker parser, LLM fallback → staged rows → user confirms → transactions.
+
+Every run is logged in `job_runs`; a partial unique index on running rows stops overlapping runs. Scheduling: Supabase `pg_cron` + `pg_net` calling the deployed app (see `docs/cron.md`); locally `npm run jobs:dev`.
+
+**AI and services**
+
+| Job | SmartPSX uses | Our option |
 | --- | --- | --- |
-| All stock prices, change, volume | `/market-watch` | every 30-60 s in market hours |
-| Intraday chart | `/timeseries/int/{SYMBOL}` | on demand, cache 1 min |
-| Daily history | `/timeseries/eod/{SYMBOL}` | once after close |
-| Symbol list, sectors | `/symbols` | daily |
-| Fundamentals, profile | `/company/{SYMBOL}` (HTML) | daily |
-| Announcements + PDFs | `/announcements` | every 2-5 min |
-| Dividends, book closures | `/payouts` | daily |
-| Market open/closed | your own rule: PSX hours + holiday list | computed |
-
-**Jobs to build**
-
-1. *Price poller* (market hours): pull market-watch → upsert `prices_latest` → evaluate price/P&L alerts.
-2. *End-of-day job*: store daily candles, take portfolio snapshots (charts, zakat), refresh payouts and symbols.
-3. *Notice poller*: fetch new announcements → download PDF → extract text → LLM summary → save per symbol → push to users holding or watching it.
-4. *Import pipeline*: email/PDF/screenshot in → OCR if image → broker parser, LLM fallback if unknown → staged rows → user confirms → transactions.
-
-**AI and services SmartPSX uses (from its privacy policy)**
-
-| Job | SmartPSX uses | Your option |
-| --- | --- | --- |
+| Market data | Own scraper of PSX portal | Licensed provider via adapter (demo, EODHD; Capital Stake later) |
 | Screenshot OCR | Google Cloud Vision | Google Vision or a vision LLM (Claude Haiku) |
 | Parsing broker docs | DeepSeek (fallback after own parsers) | DeepSeek or Claude Haiku, JSON output |
 | Notice summaries | not named, likely the same LLM | same LLM, 3-4 sentence summary |
@@ -178,7 +183,7 @@ SmartPSX's app never talks to PSX directly. Its own backend collects data from t
 | Login | Firebase Auth | Supabase Auth |
 | Analytics | PostHog | PostHog |
 
-**Rules for this module:** keep all scraping in one `lib/psx/` folder so a PSX layout change is a one-file fix; never call PSX from the browser; cache everything; add a polite User-Agent and rate limit. Scraped data is unlicensed: fine for personal use and testing, check PSX terms before charging users. Sources: [SmartPSX privacy policy](https://smartpsx.com/privacy), [PSX MCP Server](https://glama.ai/mcp/servers/burhank928/PSX-MCP-Server/tree), [PSX MCP Gateway](https://glama.ai/mcp/servers/ynasir86-crypto/psx-mcp-gateway?locale=ja-JP).
+**Rules for this module:** all market-data access in `src/lib/psx/`; server only, never from the browser; cache everything in Supabase; one polite rate-limited client per provider; never get around a provider's bot protection or terms. Check the provider's licence before charging users. Sources: [SmartPSX privacy policy](https://smartpsx.com/privacy), [EODHD PSX coverage](https://eodhd.com/financial-summary/PSX.KAR), [Capital Stake PSX API](https://www.capitalstake.com/docs/rest/api/stocks/intro).
 
 ## 5. Data model sketch
 
