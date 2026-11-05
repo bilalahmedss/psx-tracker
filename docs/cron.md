@@ -5,7 +5,8 @@ The jobs are HTTP endpoints in the Next.js app, protected by `CRON_SECRET`:
 | Job | Endpoint | When |
 | --- | --- | --- |
 | Prices | `POST /api/jobs/prices` | Every minute on weekdays, 09:00-17:00 PKT. The job skips itself when the market is closed. |
-| End of day | `POST /api/jobs/eod` | 17:00 PKT on weekdays. Skips non-trading days. |
+| End of day | `POST /api/jobs/eod` | 17:00 PKT on weekdays. Skips non-trading days. Marks every portfolio's snapshots stale. |
+| Snapshots | `POST /api/jobs/snapshots` | Every 5 minutes, all day. Rebuilds daily value history only for portfolios whose trades, dividends or cash changed (`?force=1` rebuilds all). |
 
 Add `?force=1` to run outside market hours, and `?date=YYYY-MM-DD` (eod only) to store a specific day.
 
@@ -48,6 +49,20 @@ select cron.schedule(
 );
 
 select cron.schedule(
+  'psx-snapshots',
+  '*/5 * * * *',
+  $$
+  select net.http_post(
+    url := (select decrypted_secret from vault.decrypted_secrets where name = 'app_url') || '/api/jobs/snapshots',
+    headers := jsonb_build_object(
+      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')
+    ),
+    timeout_milliseconds := 55000
+  );
+  $$
+);
+
+select cron.schedule(
   'psx-eod',
   '0 12 * * 1-5',
   $$
@@ -64,4 +79,4 @@ select cron.schedule(
 
 5. Check it's working: `select * from cron.job_run_details order by start_time desc limit 10;` and the `job_runs` table (or the Market page's "Last price job" line).
 
-To stop: `select cron.unschedule('psx-prices'); select cron.unschedule('psx-eod');`
+To stop: `select cron.unschedule('psx-prices'); select cron.unschedule('psx-snapshots'); select cron.unschedule('psx-eod');`

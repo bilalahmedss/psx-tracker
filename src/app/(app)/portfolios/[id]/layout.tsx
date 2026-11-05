@@ -57,16 +57,31 @@ async function PortfolioHeader({ params }: { params: Promise<{ id: string }> }) 
           <Link href={`/portfolios/${id}/cash/new`} className={buttonVariants({ size: "sm", variant: "outline" })}>
             Cash entry
           </Link>
+          <Link href={`/portfolios/${id}/import`} className={buttonVariants({ size: "sm", variant: "outline" })}>
+            Import CSV
+          </Link>
+          <details className="relative">
+            <summary className={`${buttonVariants({ size: "sm", variant: "outline" })} list-none [&::-webkit-details-marker]:hidden`}>Export</summary>
+            <ul className="absolute right-0 z-20 mt-1 w-44 rounded-lg border bg-popover p-1 text-sm shadow-md">
+              {(["holdings", "trades", "dividends", "cash"] as const).map((k) => (
+                <li key={k}>
+                  <a href={`/portfolios/${id}/export/${k}`} download className="block rounded-md px-2 py-1.5 capitalize hover:bg-accent">
+                    {k === "cash" ? "Cash ledger" : k} (CSV)
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </details>
           <Link href={`/portfolios/${id}/edit`} className={buttonVariants({ size: "sm", variant: "ghost" })}>
             Settings
           </Link>
         </div>
       </div>
-      <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9">
+      <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-[repeat(auto-fill,minmax(10rem,1fr))]">
         {stats.map((s) => (
           <div key={s.label} className="bg-card px-3 py-2.5">
             <dt className="text-xs text-muted-foreground">{s.label}</dt>
-            <dd className={`text-sm font-semibold tabular-nums ${s.toneOf !== undefined ? toneClass[tone(s.toneOf)] : ""}`}>{s.value}</dd>
+            <dd className={`whitespace-nowrap text-sm font-semibold tabular-nums money ${s.toneOf !== undefined ? toneClass[tone(s.toneOf)] : ""}`}>{s.value}</dd>
             {s.sub ? <dd className="text-xs text-muted-foreground">{s.sub}</dd> : null}
           </div>
         ))}

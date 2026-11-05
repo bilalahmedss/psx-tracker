@@ -167,7 +167,7 @@ export function DividendForm({
 
           {net ? (
             <p className="rounded-lg bg-muted/50 px-3 py-2 text-sm">
-              Net received: <span className="font-semibold tabular-nums">Rs {formatPrice(net.toFixed())}</span>
+              Net received: <span className="font-semibold tabular-nums money">Rs {formatPrice(net.toFixed())}</span>
             </p>
           ) : null}
         </CardContent>

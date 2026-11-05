@@ -83,18 +83,18 @@ export function HoldingsTable({ portfolioId, rows }: { portfolioId: string; rows
                 </Link>
                 <div className="max-w-48 truncate text-xs text-muted-foreground">{r.name}</div>
               </td>
-              <td className="px-3 py-2 text-right tabular-nums">{r.shares}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{r.avgCost}</td>
-              <td className="px-3 py-2 text-right tabular-nums">
+              <td className="px-3 py-2 text-right tabular-nums money">{r.shares}</td>
+              <td className="px-3 py-2 text-right tabular-nums money">{r.avgCost}</td>
+              <td className="px-3 py-2 text-right tabular-nums money">
                 {r.price ?? <span className="text-muted-foreground">No price</span>}
                 {r.price && r.delayed ? <span className="ml-1 text-[10px] text-muted-foreground">delayed</span> : null}
               </td>
-              <td className="px-3 py-2 text-right tabular-nums">{r.marketValue ?? "-"}</td>
-              <td className={`px-3 py-2 text-right tabular-nums ${toneClass[r.unrealizedTone]}`}>
+              <td className="px-3 py-2 text-right tabular-nums money">{r.marketValue ?? "-"}</td>
+              <td className={`px-3 py-2 text-right tabular-nums money ${toneClass[r.unrealizedTone]}`}>
                 {r.unrealized} <span className="text-xs">({r.unrealizedPct})</span>
               </td>
-              <td className={`px-3 py-2 text-right tabular-nums ${toneClass[r.dayTone]}`}>{r.dayChange}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.weight}</td>
+              <td className={`px-3 py-2 text-right tabular-nums money ${toneClass[r.dayTone]}`}>{r.dayChange}</td>
+              <td className="px-3 py-2 text-right tabular-nums money text-muted-foreground">{r.weight}</td>
             </tr>
           ))}
         </tbody>

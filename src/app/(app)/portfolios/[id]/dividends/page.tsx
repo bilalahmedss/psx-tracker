@@ -63,12 +63,12 @@ async function Dividends({ params }: { params: Promise<{ id: string }> }) {
               <tr key={d.id} className="border-t">
                 <td className="px-3 py-2 whitespace-nowrap">{formatDate(d.paidOn)}</td>
                 <td className="px-3 py-2 font-medium">{d.symbol}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{d.shares ? shares(dec(d.shares)) : "-"}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{d.dps ? rs(dec(d.dps), 2) : "-"}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{rs(dec(d.gross))}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{rs(dec(d.wht))}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{rs(dec(d.zakatDeducted))}</td>
-                <td className="px-3 py-2 text-right font-medium tabular-nums">{rs(dec(d.net))}</td>
+                <td className="px-3 py-2 text-right tabular-nums money">{d.shares ? shares(dec(d.shares)) : "-"}</td>
+                <td className="px-3 py-2 text-right tabular-nums money">{d.dps ? rs(dec(d.dps), 2) : "-"}</td>
+                <td className="px-3 py-2 text-right tabular-nums money">{rs(dec(d.gross))}</td>
+                <td className="px-3 py-2 text-right tabular-nums money text-muted-foreground">{rs(dec(d.wht))}</td>
+                <td className="px-3 py-2 text-right tabular-nums money text-muted-foreground">{rs(dec(d.zakatDeducted))}</td>
+                <td className="px-3 py-2 text-right font-medium tabular-nums money">{rs(dec(d.net))}</td>
                 <td className="px-3 py-2 text-xs text-muted-foreground">{d.affectsCash ? "Yes" : "No"}</td>
                 <td className="px-3 py-1 text-right whitespace-nowrap">
                   <Link href={`/portfolios/${id}/dividends/${d.id}/edit`} className={buttonVariants({ size: "sm", variant: "ghost" })}>
@@ -84,10 +84,10 @@ async function Dividends({ params }: { params: Promise<{ id: string }> }) {
               <td className="px-3 py-2" colSpan={4}>
                 Total ({rows.length})
               </td>
-              <td className="px-3 py-2 text-right tabular-nums">{total("gross")}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{total("wht")}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{total("zakatDeducted")}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{total("net")}</td>
+              <td className="px-3 py-2 text-right tabular-nums money">{total("gross")}</td>
+              <td className="px-3 py-2 text-right tabular-nums money">{total("wht")}</td>
+              <td className="px-3 py-2 text-right tabular-nums money">{total("zakatDeducted")}</td>
+              <td className="px-3 py-2 text-right tabular-nums money">{total("net")}</td>
               <td colSpan={2} />
             </tr>
           </tfoot>

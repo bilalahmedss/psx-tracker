@@ -52,15 +52,15 @@ export function LedgerTable({
         <dl className="flex flex-wrap gap-6 text-sm">
           <div>
             <dt className="text-xs text-muted-foreground">Balance</dt>
-            <dd className={`text-lg font-semibold tabular-nums ${summary.negative ? "text-red-600 dark:text-red-400" : ""}`}>Rs {summary.balance}</dd>
+            <dd className={`text-lg font-semibold tabular-nums money ${summary.negative ? "text-red-600 dark:text-red-400" : ""}`}>Rs {summary.balance}</dd>
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Money in</dt>
-            <dd className="font-medium tabular-nums">Rs {summary.totalIn}</dd>
+            <dd className="font-medium tabular-nums money">Rs {summary.totalIn}</dd>
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Money out</dt>
-            <dd className="font-medium tabular-nums">Rs {summary.totalOut}</dd>
+            <dd className="font-medium tabular-nums money">Rs {summary.totalOut}</dd>
           </div>
         </dl>
         <div className="flex flex-wrap items-end gap-3">
@@ -113,8 +113,8 @@ export function LedgerTable({
                     {r.manual ? null : <span className="ml-1 text-[10px] text-muted-foreground">auto</span>}
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">{r.description}</td>
-                  <td className={`px-3 py-2 text-right tabular-nums ${toneClass[r.amountTone]}`}>{r.amount}</td>
-                  <td className={`px-3 py-2 text-right font-medium tabular-nums ${r.negativeBalance ? "text-red-600 dark:text-red-400" : ""}`}>{r.balance}</td>
+                  <td className={`px-3 py-2 text-right tabular-nums money ${toneClass[r.amountTone]}`}>{r.amount}</td>
+                  <td className={`px-3 py-2 text-right font-medium tabular-nums money ${r.negativeBalance ? "text-red-600 dark:text-red-400" : ""}`}>{r.balance}</td>
                   <td className="px-3 py-1 text-right whitespace-nowrap">
                     <Link href={r.editHref} className={buttonVariants({ size: "sm", variant: "ghost" })}>
                       {r.manual ? "Edit" : "View"}

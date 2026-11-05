@@ -128,3 +128,22 @@
     @apply font-sans;
   }
 }
+/* Hide amounts: mask every .money element when <html data-hide-amounts> is set. */
+@layer utilities {
+  .money {
+    position: relative;
+  }
+  html[data-hide-amounts] .money {
+    color: transparent !important;
+    user-select: none;
+  }
+  html[data-hide-amounts] .money::after {
+    content: "••••";
+    position: absolute;
+    inset: 0;
+    text-align: inherit;
+    white-space: nowrap;
+    color: var(--muted-foreground);
+    font-weight: 500;
+  }
+}

@@ -19,6 +19,9 @@ A personal portfolio tracker for the Pakistan Stock Exchange (PSX). The full pro
 - `cacheComponents` and `partialPrefetching` are on. Anything that reads the session, cookies, `params` or `searchParams` must sit inside a `<Suspense>` boundary; keep the page shell (headings, nav) outside it so it prerenders. `requireUser()` calls `connection()` because token checks read the clock.
 - After a write, call `revalidatePath("/<section>", "layout")` so every cached page under it refreshes, and give forms built from saved data a `key` (e.g. `updated_at`) so they remount with fresh values.
 - Don't call `redirect()` in a page that can prerender; use `next.config.ts` redirects or the proxy.
+- Client components that read the URL (`usePathname`, `useSearchParams`) must sit inside `<Suspense>` with a static fallback (see `src/app/(app)/nav.tsx`), or dynamic routes fail to build and dev mode reload-loops.
+- Wrap every personal amount (rupees, shares, P&L) in an element with the `money` class so the hide-amounts toggle masks it. Market prices on /market stay visible.
+- Theme is `next-themes` (class strategy); hide-amounts is a per-browser preference set before paint by a script in the root layout.
 
 ## Stack (PLAN.md §6)
 
@@ -56,6 +59,9 @@ Drizzle connects with `DATABASE_URL` as a privileged Postgres role and **bypasse
 - Filer status is dated (`portfolio_tax_status`); the filer CGT rate needs ATL status on both buy and sell dates. The non-filer rate for post-July-2024 acquisitions is user-entered per portfolio (min 15%).
 - Cash ledger: only manual entries are stored in `cash_entries`; trade and dividend lines are derived.
 - Every write that changes trades is re-checked with `runFifo` so no sale can exceed holdings.
+- Daily value history lives in `snapshots`, rebuilt by the `snapshots` job (`src/jobs/snapshots.ts`) using `buildValueSeries()`. A trigger flags a portfolio stale when its trades, dividends or cash change. The Home chart adds a live point for today.
+- Dashboard card layout is per user in `dashboard_layouts` (`name = 'Default'`); `mergeLayout()` keeps old saved layouts valid when cards are added.
+- CSV import (`src/lib/csv/import.ts`) uses the template columns; preview first, then `import_portfolio_rows` saves all rows or none. Exports use the same columns.
 - Known gaps are listed in `docs/backlog.md`.
 
 ## Market data rule (PLAN.md §4b)

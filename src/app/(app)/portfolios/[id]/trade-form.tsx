@@ -202,15 +202,15 @@ export function TradeForm({
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-lg bg-muted/50 px-3 py-2 text-sm sm:grid-cols-3">
               <div>
                 <dt className="text-muted-foreground">Trade value</dt>
-                <dd className="tabular-nums">Rs {formatPrice(total.gross.toFixed())}</dd>
+                <dd className="tabular-nums money">Rs {formatPrice(total.gross.toFixed())}</dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">Charges</dt>
-                <dd className="tabular-nums">Rs {formatPrice(total.charges.toFixed())}</dd>
+                <dd className="tabular-nums money">Rs {formatPrice(total.charges.toFixed())}</dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">{v.type === "buy" ? "Total cost" : "Net proceeds"}</dt>
-                <dd className="font-semibold tabular-nums">Rs {formatPrice(total.net.toFixed())}</dd>
+                <dd className="font-semibold tabular-nums money">Rs {formatPrice(total.net.toFixed())}</dd>
               </div>
             </dl>
           ) : null}

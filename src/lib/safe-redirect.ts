@@ -1,5 +1,5 @@
 /** Default page after sign-in. */
-export const HOME_PATH = "/portfolios";
+export const HOME_PATH = "/home";
 
 /**
  * Only allow same-site relative paths as post-login redirects, so a crafted

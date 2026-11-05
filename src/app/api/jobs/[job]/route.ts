@@ -2,12 +2,14 @@ import { timingSafeEqual } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { endOfDay } from "@/jobs/end-of-day";
 import { refreshPrices } from "@/jobs/refresh-prices";
+import { rebuildSnapshots } from "@/jobs/snapshots";
 
 // Job endpoints, called by the scheduler (Supabase pg_cron + pg_net in production,
 // `npm run jobs:dev` locally). Protected by CRON_SECRET as a Bearer token.
 //   GET|POST /api/jobs/prices      refresh latest prices (skips when market closed)
 //   GET|POST /api/jobs/eod         end-of-day candles + symbol sync
-//   ?force=1                       run even outside market hours (testing)
+//   GET|POST /api/jobs/snapshots   rebuild daily value snapshots for changed portfolios
+//   ?force=1                       run even outside market hours (snapshots: rebuild all)
 //   ?date=YYYY-MM-DD               (eod only) store candles for a specific day
 
 export const maxDuration = 60;
@@ -37,6 +39,8 @@ async function handle(request: NextRequest, ctx: RouteContext<"/api/jobs/[job]">
     const date = params.get("date") ?? undefined;
     if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return Response.json({ error: "date must be YYYY-MM-DD" }, { status: 400 });
     result = await endOfDay({ force, date });
+  } else if (job === "snapshots") {
+    result = await rebuildSnapshots({ all: force });
   } else {
     return Response.json({ error: `Unknown job "${job}"` }, { status: 404 });
   }

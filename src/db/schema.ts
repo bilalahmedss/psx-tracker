@@ -367,6 +367,8 @@ export const portfolios = pgTable(
     feeProfileId: uuid("fee_profile_id").references(() => feeProfiles.id, { onDelete: "restrict" }),
     syncAddress: text("sync_address").unique(),
     isDefault: boolean("is_default").notNull().default(false),
+    /** Set by a trigger when trades, dividends or cash change; the snapshots job rebuilds and clears it. */
+    snapshotsStale: boolean("snapshots_stale").notNull().default(true),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -608,6 +610,8 @@ export const snapshots = pgTable(
     marketValue: money("market_value").notNull(),
     cost: money("cost").notNull(),
     cash: money("cash").notNull(),
+    /** Some holdings had no closing price that day and were valued at cost. */
+    estimated: boolean("estimated").notNull().default(false),
   },
   (t) => [primaryKey({ columns: [t.portfolioId, t.date] }), ...portfolioPolicies("snapshots", true)],
 ).enableRLS();
@@ -713,5 +717,9 @@ export const dashboardLayouts = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [index("dashboard_layouts_user_id_idx").on(t.userId), ...ownerPolicies("dashboard_layouts")],
+  (t) => [
+    index("dashboard_layouts_user_id_idx").on(t.userId),
+    uniqueIndex("dashboard_layouts_user_name_key").on(t.userId, t.name),
+    ...ownerPolicies("dashboard_layouts"),
+  ],
 ).enableRLS();

@@ -22,6 +22,12 @@ export async function getTrackedSymbols(): Promise<string[]> {
   return [...new Set([...DEFAULT_TRACKED_SYMBOLS, ...rows.map((r) => r.symbol)])].sort();
 }
 
+/** Symbols currently or previously traded in any portfolio (backfilled first). */
+export async function getTradedSymbols(): Promise<string[]> {
+  const rows = await db.execute<{ symbol: string }>(sql`select distinct symbol from public.transactions`);
+  return rows.map((r) => r.symbol);
+}
+
 /** Upsert the provider's symbol list. Keeps existing sector/Shariah data if the provider has none. */
 export async function syncSymbols(source: MarketDataSource): Promise<SymbolInfo[]> {
   const list = await source.listSymbols();

@@ -1,6 +1,7 @@
 // Local scheduler: calls the job endpoints on the running dev server, the same
 // way the production cron does. Start `npm run dev` first.
 //   npm run jobs:dev                 prices every minute (the job skips itself when the market is closed),
+//                                    snapshots every 5 minutes (only rebuilds changed portfolios),
 //                                    eod once a day after 17:00 PKT on weekdays
 //   npm run job -- prices [--force]  run one job once
 //   npm run job -- eod [--force] [--date=YYYY-MM-DD]
@@ -45,8 +46,10 @@ if (mode === "once") {
 
 console.log(`Job scheduler calling ${base}. Ctrl+C to stop.`);
 let lastEod = null;
+let ticks = 0;
 async function tick() {
   await call("prices");
+  if (ticks++ % 5 === 0) await call("snapshots");
   const { date, minutes, weekday } = pkt();
   if (weekday >= 1 && weekday <= 5 && minutes >= 17 * 60 && lastEod !== date) {
     lastEod = date;

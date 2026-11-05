@@ -1,8 +1,9 @@
 import "server-only";
 import { addDays, getMarketSource, isTradingDay, lastCloseMinutes, pktParts } from "@/lib/psx";
 import type { Candle } from "@/lib/psx";
-import { getTrackedSymbols, loadCalendar, symbolsNeedingHistory, syncSymbols, upsertCandles } from "./market-db";
+import { getTrackedSymbols, getTradedSymbols, loadCalendar, symbolsNeedingHistory, syncSymbols, upsertCandles } from "./market-db";
 import { runJob, type JobResult } from "./run-job";
+import { markAllSnapshotsStale } from "./snapshots";
 
 /** Wait this long after the last session closes before storing the day's candles. */
 const SETTLE_MINUTES = 15;
@@ -47,9 +48,15 @@ export async function endOfDay({ force = false, now = new Date(), date }: { forc
       closes = closes.filter((c) => known.has(c.symbol) && c.date === day);
       await upsertCandles(closes);
 
-      const backfill = (await symbolsNeedingHistory(tracked.filter((s) => known.has(s)), MIN_HISTORY)).slice(0, BACKFILL_PER_RUN);
+      // Held and traded stocks first: their history drives the value chart.
+      const traded = new Set(await getTradedSymbols());
+      const candidates = tracked.filter((s) => known.has(s)).sort((a, b) => Number(traded.has(b)) - Number(traded.has(a)));
+      const backfill = (await symbolsNeedingHistory(candidates, MIN_HISTORY)).slice(0, BACKFILL_PER_RUN);
       let backfilled = 0;
       for (const s of backfill) backfilled += await upsertCandles(await source.getDailyHistory(s, addDays(day, -BACKFILL_DAYS), day));
+
+      // New closes change every portfolio's history; the snapshots job rebuilds them.
+      await markAllSnapshotsStale();
 
       return {
         status: "success",

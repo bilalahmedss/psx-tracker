@@ -154,6 +154,56 @@ try {
     .insert({ portfolio_id: aPortfolioId, status: "non_filer", effective_from: "2025-01-01" });
   check("B can't change A's tax status history", bStatusErr?.code === "42501", bStatusErr?.message);
 
+  console.log("Dashboard, snapshots and import:");
+  const { data: snapInsert, error: snapErr } = await b.client
+    .from("snapshots")
+    .insert({ portfolio_id: aPortfolioId, date: "2025-01-10", market_value: "1", cost: "1", cash: "0" })
+    .select();
+  check("users can't write snapshots (job only)", snapErr?.code === "42501" && !snapInsert, snapErr?.message);
+  await admin.from("snapshots").insert({ portfolio_id: aPortfolioId, date: "2025-01-10", market_value: "20000", cost: "20036.5", cash: "0" });
+  const { data: aSnaps } = await a.client.from("snapshots").select("date").eq("portfolio_id", aPortfolioId);
+  const { data: bSnaps } = await b.client.from("snapshots").select("date").eq("portfolio_id", aPortfolioId);
+  check("owners can read their snapshots", aSnaps?.length === 1);
+  check("B can't read A's snapshots", bSnaps?.length === 0);
+  const { data: staleNow } = await admin.from("portfolios").select("snapshots_stale").eq("id", aPortfolioId).single();
+  check("adding a trade marks snapshots stale", staleNow?.snapshots_stale === true);
+
+  const { error: aLayoutErr } = await a.client
+    .from("dashboard_layouts")
+    .upsert({ name: "Default", widgets: [{ id: "cash", visible: false }], is_active: true }, { onConflict: "user_id,name" });
+  const { data: bLayouts } = await b.client.from("dashboard_layouts").select("id");
+  check("A can save a dashboard layout", !aLayoutErr, aLayoutErr?.message);
+  check("B can't see A's dashboard layout", bLayouts?.length === 0);
+  const { error: bLayoutErr } = await b.client.from("dashboard_layouts").insert({ name: "Hack", widgets: [], user_id: a.id });
+  check("B can't create a layout for A", bLayoutErr?.code === "42501", bLayoutErr?.message);
+
+  const { error: bImportErr } = await b.client.rpc("import_portfolio_rows", {
+    p_portfolio_id: aPortfolioId,
+    p_trades: [],
+    p_dividends: [],
+    p_cash: [{ type: "deposit", amount: "1", date: "2025-01-01", note: null }],
+  });
+  check("B can't import into A's portfolio", bImportErr?.code === "P0002", bImportErr?.message);
+
+  const { count: before } = await admin.from("transactions").select("id", { count: "exact", head: true }).eq("portfolio_id", aPortfolioId);
+  const { error: badImportErr } = await a.client.rpc("import_portfolio_rows", {
+    p_portfolio_id: aPortfolioId,
+    p_trades: [{ symbol: "OGDC", type: "buy", qty: "10", price: "100", fee: "0", tax: "0", other_charges: "0", trade_date: "2025-02-01", affects_cash: true, note: null }],
+    p_dividends: [],
+    p_cash: [{ type: "withdrawal", amount: "500", date: "2025-02-01", note: null }], // positive withdrawal violates a check
+  });
+  const { count: after } = await admin.from("transactions").select("id", { count: "exact", head: true }).eq("portfolio_id", aPortfolioId);
+  check("a failing import saves nothing (all or none)", Boolean(badImportErr) && before === after, badImportErr?.message);
+
+  const { data: okImport, error: okImportErr } = await a.client.rpc("import_portfolio_rows", {
+    p_portfolio_id: aPortfolioId,
+    p_trades: [{ symbol: "OGDC", type: "buy", qty: "10", price: "100", fee: "1.5", tax: "0.23", other_charges: "0", trade_date: "2025-02-01", affects_cash: true, note: "csv" }],
+    p_dividends: [],
+    p_cash: [{ type: "deposit", amount: "5000", date: "2025-02-01", note: null }],
+  });
+  const { data: csvRows } = await a.client.from("transactions").select("source").eq("portfolio_id", aPortfolioId).eq("note", "csv");
+  check("A can import into own portfolio, tagged source=csv", !okImportErr && okImport?.trades === 1 && okImport?.cash === 1 && csvRows?.[0]?.source === "csv", okImportErr?.message);
+
   const { error: badCashErr } = await a.client
     .from("cash_entries")
     .insert({ portfolio_id: aPortfolioId, type: "buy", amount: "-5", date: "2025-01-10" });

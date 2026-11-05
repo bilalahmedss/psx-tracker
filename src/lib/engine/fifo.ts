@@ -63,18 +63,28 @@ export function txnCashValue(t: EngineTxn): Dec {
  * taking the remainder, so totals stay exact.
  */
 export function runFifo(txns: EngineTxn[]): { lots: OpenLot[]; matches: LotMatch[] } {
-  const open = new Map<string, OpenLot[]>();
-  const matches: LotMatch[] = [];
+  const book = new LotBook();
+  for (const t of sortTxns(txns)) book.apply(t);
+  return { lots: book.openLots(), matches: book.matches };
+}
 
-  for (const t of sortTxns(txns)) {
-    const lots = open.get(t.symbol) ?? [];
-    open.set(t.symbol, lots);
+/**
+ * Incremental FIFO state. Apply transactions in sortTxns() order; read open
+ * lots at any point (used for day-by-day value series).
+ */
+export class LotBook {
+  private readonly open = new Map<string, OpenLot[]>();
+  readonly matches: LotMatch[] = [];
+
+  apply(t: EngineTxn): void {
+    const lots = this.open.get(t.symbol) ?? [];
+    this.open.set(t.symbol, lots);
     const qty = dec(t.qty);
 
     if (t.type === "buy") {
       const cost = txnCashValue(t);
       lots.push({ lotId: t.id, symbol: t.symbol, acquiredOn: t.tradeDate, qtyOriginal: qty, qtyOpen: qty, costOpen: cost, costPerShare: cost.div(qty) });
-      continue;
+      return;
     }
 
     const held = lots.reduce((s, l) => s.plus(l.qtyOpen), ZERO);
@@ -88,7 +98,7 @@ export function runFifo(txns: EngineTxn[]): { lots: OpenLot[]; matches: LotMatch
       const cost = take.eq(lot.qtyOpen) ? lot.costOpen : lot.costOpen.mul(take).div(lot.qtyOpen);
       const proceeds = take.eq(remainingQty) ? remainingProceeds : remainingProceeds.mul(take).div(remainingQty);
 
-      matches.push({
+      this.matches.push({
         sellTxnId: t.id,
         lotId: lot.lotId,
         symbol: t.symbol,
@@ -109,7 +119,19 @@ export function runFifo(txns: EngineTxn[]): { lots: OpenLot[]; matches: LotMatch
     }
   }
 
-  return { lots: [...open.values()].flat(), matches };
+  openLots(): OpenLot[] {
+    return [...this.open.values()].flat();
+  }
+
+  /** Open quantity and remaining cost per symbol. */
+  positions(): Map<string, { qty: Dec; cost: Dec }> {
+    const out = new Map<string, { qty: Dec; cost: Dec }>();
+    for (const [symbol, lots] of this.open) {
+      if (!lots.length) continue;
+      out.set(symbol, { qty: lots.reduce((s, l) => s.plus(l.qtyOpen), ZERO), cost: lots.reduce((s, l) => s.plus(l.costOpen), ZERO) });
+    }
+    return out;
+  }
 }
 
 function Dec_min(a: Dec, b: Dec): Dec {

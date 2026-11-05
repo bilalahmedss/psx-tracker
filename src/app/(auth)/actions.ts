@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { getOrigin } from "@/lib/auth";
-import { safeNext } from "@/lib/safe-redirect";
+import { HOME_PATH, safeNext } from "@/lib/safe-redirect";
 
 export type AuthState = { error?: string; message?: string } | undefined;
 
@@ -103,7 +103,7 @@ export async function updatePassword(_prev: AuthState, fd: FormData): Promise<Au
     if (error.code === "weak_password") return { error: error.message };
     return { error: "Could not update the password. Request a new reset link and try again." };
   }
-  redirect("/portfolios");
+  redirect(HOME_PATH);
 }
 
 export async function signOut(): Promise<void> {

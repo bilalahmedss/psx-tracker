@@ -75,10 +75,10 @@ export function HistoryTable({ rows, returnTo }: { rows: HistoryRow[]; returnTo:
                   <span className="font-medium">{r.symbol}</span>
                   {r.note ? <div className="max-w-48 truncate text-xs text-muted-foreground">{r.note}</div> : null}
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums">{r.qty}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{r.price}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.charges}</td>
-                <td className="px-3 py-2 text-right font-medium tabular-nums">{r.amount}</td>
+                <td className="px-3 py-2 text-right tabular-nums money">{r.qty}</td>
+                <td className="px-3 py-2 text-right tabular-nums money">{r.price}</td>
+                <td className="px-3 py-2 text-right tabular-nums money text-muted-foreground">{r.charges}</td>
+                <td className="px-3 py-2 text-right font-medium tabular-nums money">{r.amount}</td>
                 <td className="px-3 py-2 text-xs text-muted-foreground">{r.affectsCash ? "Yes" : "No"}</td>
                 <td className="px-3 py-1 text-right whitespace-nowrap">
                   <Link href={r.editHref} className={buttonVariants({ size: "sm", variant: "ghost" })}>

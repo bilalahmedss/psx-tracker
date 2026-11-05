@@ -68,7 +68,7 @@ async function HoldingDetail({ params }: { params: Promise<{ id: string; symbol:
         <Card>
           <CardHeader>
             <CardDescription>Latest price</CardDescription>
-            <CardTitle className="flex flex-wrap items-baseline gap-2 text-2xl tabular-nums">
+            <CardTitle className="flex flex-wrap items-baseline gap-2 text-2xl tabular-nums money">
               {quote ? `Rs ${formatPrice(quote.price)}` : "No price yet"}
               {quote?.change ? (
                 <span className={`text-sm ${toneClass[changeTone(quote.change)]}`}>
@@ -96,21 +96,21 @@ async function HoldingDetail({ params }: { params: Promise<{ id: string; symbol:
           <CardContent>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
               <dt className="text-muted-foreground">Shares</dt>
-              <dd className="text-right tabular-nums">{shares(holding?.qty)}</dd>
+              <dd className="text-right tabular-nums money">{shares(holding?.qty)}</dd>
               <dt className="text-muted-foreground">Average cost</dt>
-              <dd className="text-right tabular-nums">{holding ? `Rs ${rs(holding.avgCost, 4)}` : "-"}</dd>
+              <dd className="text-right tabular-nums money">{holding ? `Rs ${rs(holding.avgCost, 4)}` : "-"}</dd>
               <dt className="text-muted-foreground">Cost</dt>
-              <dd className="text-right tabular-nums">{holding ? `Rs ${rs(holding.cost)}` : "-"}</dd>
+              <dd className="text-right tabular-nums money">{holding ? `Rs ${rs(holding.cost)}` : "-"}</dd>
               <dt className="text-muted-foreground">Market value</dt>
-              <dd className="text-right tabular-nums">{holding?.marketValue ? `Rs ${rs(holding.marketValue)}` : "-"}</dd>
+              <dd className="text-right tabular-nums money">{holding?.marketValue ? `Rs ${rs(holding.marketValue)}` : "-"}</dd>
               <dt className="text-muted-foreground">Unrealized P&amp;L</dt>
-              <dd className={`text-right tabular-nums ${toneClass[tone(holding?.unrealized)]}`}>{signedRs(holding?.unrealized)}</dd>
+              <dd className={`text-right tabular-nums money ${toneClass[tone(holding?.unrealized)]}`}>{signedRs(holding?.unrealized)}</dd>
               <dt className="text-muted-foreground">Realized P&amp;L</dt>
-              <dd className={`text-right tabular-nums ${toneClass[tone(realized)]}`}>{signedRs(realized)}</dd>
+              <dd className={`text-right tabular-nums money ${toneClass[tone(realized)]}`}>{signedRs(realized)}</dd>
               <dt className="text-muted-foreground">Dividends (net)</dt>
-              <dd className="text-right tabular-nums">Rs {rs(dividendsNet)}</dd>
+              <dd className="text-right tabular-nums money">Rs {rs(dividendsNet)}</dd>
               <dt className="text-muted-foreground">Est. CGT if sold today</dt>
-              <dd className="text-right tabular-nums">{holding?.cgtIfSold ? `Rs ${rs(D.max(holding.cgtIfSold, 0))}` : "-"}</dd>
+              <dd className="text-right tabular-nums money">{holding?.cgtIfSold ? `Rs ${rs(D.max(holding.cgtIfSold, 0))}` : "-"}</dd>
             </dl>
           </CardContent>
         </Card>
@@ -141,19 +141,19 @@ async function HoldingDetail({ params }: { params: Promise<{ id: string; symbol:
                   {holding.lots.map((l) => (
                     <tr key={l.lotId} className="border-t">
                       <td className="py-2 pr-3">{formatDate(l.acquiredOn)}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">
+                      <td className="py-2 pr-3 text-right tabular-nums money">
                         {shares(l.qtyOpen)}
                         {!l.qtyOpen.eq(l.qtyOriginal) ? <span className="text-xs text-muted-foreground"> of {shares(l.qtyOriginal)}</span> : null}
                       </td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{rs(l.costPerShare, 4)}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{rs(l.costOpen)}</td>
-                      <td className={`py-2 pr-3 text-right tabular-nums ${toneClass[tone(l.unrealized)]}`}>{signedRs(l.unrealized)}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{l.holdingDays} days</td>
-                      <td className="py-2 pr-3 text-right tabular-nums" title={`${l.cgtRuleLabel}; ${l.cgtBasis === "filer" ? "filer on both dates" : "non-filer rate"}`}>
+                      <td className="py-2 pr-3 text-right tabular-nums money">{rs(l.costPerShare, 4)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums money">{rs(l.costOpen)}</td>
+                      <td className={`py-2 pr-3 text-right tabular-nums money ${toneClass[tone(l.unrealized)]}`}>{signedRs(l.unrealized)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums money">{l.holdingDays} days</td>
+                      <td className="py-2 pr-3 text-right tabular-nums money" title={`${l.cgtRuleLabel}; ${l.cgtBasis === "filer" ? "filer on both dates" : "non-filer rate"}`}>
                         {ratePct(l.cgtRate)}
                         {l.cgtToConfirm ? <span className="ml-1 text-[10px] text-amber-700 dark:text-amber-400">to confirm</span> : null}
                       </td>
-                      <td className="py-2 text-right tabular-nums">
+                      <td className="py-2 text-right tabular-nums money">
                         {l.cgtIfSold ? (l.cgtIfSold.isNegative() ? <span className="text-xs text-muted-foreground">Loss offsets {rs(l.cgtIfSold.neg())}</span> : rs(l.cgtIfSold)) : "-"}
                       </td>
                     </tr>
@@ -193,15 +193,15 @@ async function HoldingDetail({ params }: { params: Promise<{ id: string; symbol:
                       <td className="py-2 pr-3 text-muted-foreground">
                         {formatDate(s.acquiredOn)} · {s.holdingDays} days
                       </td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{shares(s.qty)}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{rs(s.proceeds)}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{rs(s.cost)}</td>
-                      <td className={`py-2 pr-3 text-right tabular-nums ${toneClass[tone(s.gain)]}`}>{signedRs(s.gain)}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums" title={s.ruleLabel}>
+                      <td className="py-2 pr-3 text-right tabular-nums money">{shares(s.qty)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums money">{rs(s.proceeds)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums money">{rs(s.cost)}</td>
+                      <td className={`py-2 pr-3 text-right tabular-nums money ${toneClass[tone(s.gain)]}`}>{signedRs(s.gain)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums money" title={s.ruleLabel}>
                         {ratePct(s.rate)}
                         {s.toConfirm ? <span className="ml-1 text-[10px] text-amber-700 dark:text-amber-400">to confirm</span> : null}
                       </td>
-                      <td className="py-2 text-right tabular-nums">{s.cgt.isNegative() ? "-" : rs(s.cgt)}</td>
+                      <td className="py-2 text-right tabular-nums money">{s.cgt.isNegative() ? "-" : rs(s.cgt)}</td>
                     </tr>
                   ))}
                 </tbody>

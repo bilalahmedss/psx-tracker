@@ -12,9 +12,15 @@ Known gaps and deliberate simplifications, to pick up later. Newest first within
 ## Market data and calendar
 
 - **Lunar holidays and Friday hours — to confirm** against the PSX notice (`market_holidays`, `STANDARD_HOURS` in `src/lib/psx/calendar.ts`).
-- **EODHD adapter untested against the live API.** Re-capture fixtures once an API key is available.
+- **EODHD free plan (checked 5 Nov 2026):** 20 requests/day; daily history (`/eod`) works, but real-time quotes return "NA" for `.KAR` and the bulk end-of-day endpoint returns HTTP 423. The price job and `jobs:dev` would exhaust the quota within minutes. Before using EODHD: either upgrade, or add a daily request budget to the adapter and make the end-of-day job fall back to per-symbol `/eod` when bulk is unavailable.
 - **KSE-100 index** not fetched yet.
 - **Production cron** needs a deployed app; steps in `docs/cron.md`.
+
+## Dashboard
+
+- Chart history shows holdings at cost on days with no stored close (flagged "estimated"); needs real daily closes backfilled for held symbols.
+- Compare against KSE-100 (needs index data).
+- Resizable cards and multiple saved layouts (Stage 2).
 
 ## Engine scope
 
