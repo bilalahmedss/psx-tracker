@@ -14,7 +14,7 @@ import {
   type Quote,
 } from "@/lib/psx";
 import { quoteFromCandles } from "@/lib/psx/quote-math";
-import { decideRefresh, latestPublishedDay, LIMIT_MESSAGE, readRefreshConfig, shortDay, type RefreshTrigger } from "@/lib/psx/refresh-policy";
+import { decideRefresh, EOD_MAX_ATTEMPTS, latestCheckDay, LIMIT_MESSAGE, readRefreshConfig, shortDay, type RefreshTrigger } from "@/lib/psx/refresh-policy";
 import {
   ensureSecurities,
   getRefreshSymbols,
@@ -66,7 +66,12 @@ export async function refreshPrices({ trigger = "schedule", force = false, now =
     now,
     cal,
     config,
-    state: { lastAttemptAt: state?.lastAttemptAt ?? null, dataDay: state?.dataDay ?? null },
+    state: {
+      lastAttemptAt: state?.lastAttemptAt ?? null,
+      dataDay: state?.dataDay ?? null,
+      eodAttemptDay: state?.eodAttemptDay ?? null,
+      eodAttempts: state?.eodAttempts ?? 0,
+    },
     symbols: symbols.length,
     cost,
     remaining: budget ? await budget.remaining() : null,
@@ -78,13 +83,27 @@ export async function refreshPrices({ trigger = "schedule", force = false, now =
   }
 
   return runJob("prices", source.id, async () => {
+    const target = source.quoteMode === "eod" ? (decision.run && decision.targetDay) || latestCheckDay(now, cal, config.eodCheckStart) : null;
+    // Scheduled end-of-day checks count towards the day's limit; button presses don't.
+    const attempt =
+      target && trigger === "schedule" ? (state?.eodAttemptDay === target ? state.eodAttempts : 0) + 1 : null;
     // Recorded first, so the cooldown covers a run that is still going.
-    await saveRefreshState({ source: source.id, quoteMode: source.quoteMode, trackedCount: symbols.length, lastAttemptAt: now });
+    await saveRefreshState({
+      source: source.id,
+      quoteMode: source.quoteMode,
+      trackedCount: symbols.length,
+      lastAttemptAt: now,
+      ...(attempt ? { eodAttemptDay: target, eodAttempts: attempt } : {}),
+    });
     try {
-      const out =
-        source.quoteMode === "eod"
-          ? await refreshCloses(source, cal, symbols, (decision.run && decision.targetDay) || latestPublishedDay(now, cal, config.eodDelayMinutes))
-          : await refreshQuotes(source, symbols);
+      const out = target ? await refreshCloses(source, cal, symbols, target) : await refreshQuotes(source, symbols);
+      if (target && !out.dataDay && attempt) {
+        out.message =
+          attempt >= EOD_MAX_ATTEMPTS
+            ? `Closing prices for ${shortDay(target)} were not published after ${EOD_MAX_ATTEMPTS} checks; giving up for today`
+            : `${out.message} (check ${attempt} of ${EOD_MAX_ATTEMPTS})`;
+        if (attempt >= EOD_MAX_ATTEMPTS) console.warn(`[job:prices] ${out.message}`);
+      }
       // Prices from a different source (e.g. demo) would be mislabelled; drop them.
       await db.delete(pricesLatest).where(ne(pricesLatest.source, source.id));
       await saveRefreshState({

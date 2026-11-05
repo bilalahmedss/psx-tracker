@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildCalendar, pktToDate } from "./calendar";
-import { decideRefresh, latestPublishedDay, priceStatusView, readRefreshConfig, shortDay, type RefreshInput } from "./refresh-policy";
+import { decideRefresh, latestCheckDay, priceStatusView, readCheckStart, readRefreshConfig, shortDay, type RefreshInput } from "./refresh-policy";
 
 const cal = buildCalendar([{ date: "2026-11-09", name: "Iqbal Day", status: "confirmed" }]);
 const config = readRefreshConfig({});
@@ -12,7 +12,7 @@ function input(over: Partial<RefreshInput> = {}): RefreshInput {
     trigger: "schedule",
     mode: "eod",
     metered: true,
-    now: pkt("2026-11-05", "18:00"),
+    now: pkt("2026-11-05", "22:45"),
     cal,
     config,
     state: { lastAttemptAt: null, dataDay: "2026-11-04" },
@@ -24,55 +24,87 @@ function input(over: Partial<RefreshInput> = {}): RefreshInput {
 }
 
 describe("readRefreshConfig", () => {
-  it("uses the defaults: 30 minutes, holdings, 5-minute cooldown, try closes 2 hours after the close", () => {
-    expect(config).toEqual({ intervalMinutes: 30, scope: "holdings", cooldownMinutes: 5, eodDelayMinutes: 120 });
+  it("uses the defaults: 30 minutes, holdings, 5-minute cooldown, end-of-day checks from 22:30 PKT", () => {
+    expect(config).toEqual({ intervalMinutes: 30, scope: "holdings", cooldownMinutes: 5, eodCheckStart: 22 * 60 + 30 });
   });
   it("reads overrides and rejects bad values", () => {
-    expect(readRefreshConfig({ PRICE_REFRESH_MINUTES: "150", PRICE_REFRESH_SCOPE: "ALL" })).toMatchObject({ intervalMinutes: 150, scope: "all" });
+    expect(readRefreshConfig({ PRICE_REFRESH_MINUTES: "150", PRICE_REFRESH_SCOPE: "ALL", EOD_CHECK_START: "21:15" })).toMatchObject({
+      intervalMinutes: 150,
+      scope: "all",
+      eodCheckStart: 21 * 60 + 15,
+    });
     expect(() => readRefreshConfig({ PRICE_REFRESH_MINUTES: "0" })).toThrow(/PRICE_REFRESH_MINUTES/);
     expect(() => readRefreshConfig({ PRICE_REFRESH_SCOPE: "watchlist" })).toThrow(/PRICE_REFRESH_SCOPE/);
   });
+  it("reads EOD_CHECK_START as a 24-hour PKT time", () => {
+    expect(readCheckStart(undefined)).toBe(1350);
+    expect(readCheckStart(" ")).toBe(1350);
+    expect(readCheckStart("00:05")).toBe(5);
+    expect(() => readCheckStart("10.30pm")).toThrow(/EOD_CHECK_START/);
+    expect(() => readCheckStart("24:00")).toThrow(/EOD_CHECK_START/);
+  });
 });
 
-describe("latestPublishedDay", () => {
-  it("is today only once the publish delay after the close has passed", () => {
-    expect(latestPublishedDay(pkt("2026-11-05", "17:29"), cal, 120)).toBe("2026-11-04");
-    expect(latestPublishedDay(pkt("2026-11-05", "17:30"), cal, 120)).toBe("2026-11-05");
+describe("latestCheckDay", () => {
+  it("is today only from the check start (22:30 PKT) on a trading day", () => {
+    expect(latestCheckDay(pkt("2026-11-05", "22:29"), cal, 1350)).toBe("2026-11-04");
+    expect(latestCheckDay(pkt("2026-11-05", "22:30"), cal, 1350)).toBe("2026-11-05");
+  });
+  it("keeps checks after midnight on the previous evening's day", () => {
+    expect(latestCheckDay(pkt("2026-11-06", "00:30"), cal, 1350)).toBe("2026-11-05");
   });
   it("skips weekends and holidays", () => {
-    // Monday 9 Nov is a holiday, so on Monday and early Tuesday the latest day is Friday 6 Nov.
-    expect(latestPublishedDay(pkt("2026-11-08", "12:00"), cal, 120)).toBe("2026-11-06");
-    expect(latestPublishedDay(pkt("2026-11-09", "20:00"), cal, 120)).toBe("2026-11-06");
-    expect(latestPublishedDay(pkt("2026-11-10", "09:00"), cal, 120)).toBe("2026-11-06");
-  });
-  it("uses the last session's close on Fridays", () => {
-    expect(latestPublishedDay(pkt("2026-11-06", "18:00"), cal, 120)).toBe("2026-11-05");
-    expect(latestPublishedDay(pkt("2026-11-06", "18:30"), cal, 120)).toBe("2026-11-06");
+    // Monday 9 Nov is a holiday, so until Tuesday 22:30 the latest day is Friday 6 Nov.
+    expect(latestCheckDay(pkt("2026-11-08", "12:00"), cal, 1350)).toBe("2026-11-06");
+    expect(latestCheckDay(pkt("2026-11-09", "23:00"), cal, 1350)).toBe("2026-11-06");
+    expect(latestCheckDay(pkt("2026-11-10", "09:00"), cal, 1350)).toBe("2026-11-06");
+    expect(latestCheckDay(pkt("2026-11-10", "22:30"), cal, 1350)).toBe("2026-11-10");
   });
 });
 
 describe("decideRefresh, end-of-day mode (free plan)", () => {
-  it("fetches the day's closes once they should be published", () => {
-    expect(decideRefresh(input())).toEqual({ run: true, targetDay: "2026-11-05" });
+  const tries = (n: number, last: string, lastDate = "2026-11-05") => ({
+    lastAttemptAt: pkt(lastDate, last),
+    dataDay: "2026-11-04",
+    eodAttemptDay: "2026-11-05",
+    eodAttempts: n,
   });
-  it("does nothing, and spends nothing, when the closes are already in", () => {
+
+  it("makes the first check for the day's closes from 22:30", () => {
+    expect(decideRefresh(input({ now: pkt("2026-11-05", "22:30") }))).toEqual({ run: true, targetDay: "2026-11-05" });
+  });
+  it("does nothing, and spends nothing, before 22:30 or when the closes are already in", () => {
+    expect(decideRefresh(input({ now: pkt("2026-11-05", "18:00") }))).toMatchObject({ run: false, code: "up_to_date" });
     expect(decideRefresh(input({ state: { lastAttemptAt: null, dataDay: "2026-11-05" } }))).toMatchObject({ run: false, code: "up_to_date" });
-    // During market hours the latest published day is yesterday.
-    expect(decideRefresh(input({ now: pkt("2026-11-05", "11:00") }))).toMatchObject({ run: false, code: "up_to_date" });
   });
-  it("retries every interval while the closes are not out yet", () => {
-    const state = { lastAttemptAt: pkt("2026-11-05", "17:40"), dataDay: "2026-11-04" };
-    expect(decideRefresh(input({ state, now: pkt("2026-11-05", "18:05") }))).toMatchObject({ run: false, code: "interval", message: "Next scheduled refresh at 18:10" });
-    expect(decideRefresh(input({ state, now: pkt("2026-11-05", "18:10") }))).toMatchObject({ run: true });
-  });
-  it("lets the button retry after the 5-minute cooldown", () => {
-    const state = { lastAttemptAt: pkt("2026-11-05", "17:40"), dataDay: "2026-11-04" };
-    expect(decideRefresh(input({ trigger: "manual", state, now: pkt("2026-11-05", "17:43") }))).toMatchObject({
+  it("retries hourly while the closes are not out", () => {
+    expect(decideRefresh(input({ state: tries(1, "22:30"), now: pkt("2026-11-05", "23:15") }))).toMatchObject({
       run: false,
-      code: "cooldown",
-      message: "Refreshed recently. Try again at 17:45",
+      code: "interval",
+      message: "Next scheduled refresh at 23:30",
     });
-    expect(decideRefresh(input({ trigger: "manual", state, now: pkt("2026-11-05", "17:45") }))).toMatchObject({ run: true });
+    expect(decideRefresh(input({ state: tries(1, "22:30"), now: pkt("2026-11-05", "23:30") }))).toMatchObject({ run: true });
+    // The third check falls after midnight and is still for 5 Nov.
+    expect(decideRefresh(input({ state: tries(2, "23:30"), now: pkt("2026-11-06", "00:30") }))).toEqual({ run: true, targetDay: "2026-11-05" });
+  });
+  it("gives up on the day after 3 checks, until the next trading day's 22:30", () => {
+    const gaveUp = input({ state: tries(3, "00:30", "2026-11-06"), now: pkt("2026-11-06", "01:30") });
+    expect(decideRefresh(gaveUp)).toMatchObject({
+      run: false,
+      code: "gave_up",
+      message: "Gave up on closing prices for 5 Nov after 3 checks; next check 22:30 PKT on the next trading day",
+    });
+    expect(decideRefresh({ ...gaveUp, now: pkt("2026-11-06", "15:00") })).toMatchObject({ code: "gave_up" });
+    // Friday 6 Nov at 22:30 is a new day: checks start again.
+    expect(decideRefresh({ ...gaveUp, now: pkt("2026-11-06", "22:30") })).toEqual({ run: true, targetDay: "2026-11-06" });
+  });
+  it("still lets the button try after giving up, once the cooldown has passed", () => {
+    const state = tries(3, "00:30", "2026-11-06");
+    expect(decideRefresh(input({ trigger: "manual", state, now: pkt("2026-11-06", "00:33") }))).toMatchObject({
+      code: "cooldown",
+      message: "Refreshed recently. Try again at 00:35",
+    });
+    expect(decideRefresh(input({ trigger: "manual", state, now: pkt("2026-11-06", "08:00") }))).toMatchObject({ run: true });
   });
   it("starts at once when nothing has been fetched yet", () => {
     expect(decideRefresh(input({ state: { lastAttemptAt: null, dataDay: null }, now: pkt("2026-11-05", "11:00") }))).toEqual({ run: true, targetDay: "2026-11-04" });

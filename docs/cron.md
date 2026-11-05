@@ -13,7 +13,7 @@ Add `?force=1` to ignore the timing rules (never the daily call limit), and `?da
 ## When prices refresh
 
 - **Intraday sources** (demo; EODHD with `EODHD_QUOTE_MODE=realtime`): every `PRICE_REFRESH_MINUTES` (default 30) while PSX is open, plus one run in the 5 minutes after each close.
-- **EODHD free plan** (`EODHD_QUOTE_MODE=eod`, the default): the free plan returns no intraday PSX quotes, only daily closes. From `EOD_PUBLISH_DELAY_MINUTES` (default 120) after the close, the job tries every `PRICE_REFRESH_MINUTES`. Each try first fetches one stock (1 call); only when that day's close is out does it fetch the rest. Once every held stock has the close, it does nothing until the next trading day.
+- **EODHD free plan** (`EODHD_QUOTE_MODE=eod`, the default): the free plan returns no intraday PSX quotes, only daily closes. From `EOD_CHECK_START` (default 22:30 PKT) on each trading day, the job checks for that day's closes, then hourly, at most 3 times (22:30, 23:30, 00:30). Each check first fetches one stock (1 call); only when the close is out does it fetch the rest. After 3 empty checks it gives up on that day and logs it (`job_runs`, `market_data_state.message`); the next trading day's closes still bring in the missed day's candles. The Refresh button can still try after giving up.
 - **Daily limit:** every EODHD call is reserved in `api_usage` before it is sent, and nothing is sent past `EODHD_DAILY_LIMIT` (default 15, counted per UTC day, matching EODHD's reset). EODHD counts **one call per ticker**. Scheduled runs keep one full refresh in reserve for the button. When even that doesn't fit, pages show "Daily limit reached, showing last prices".
 - **Button:** a 5-minute cooldown after any refresh (shared by all users).
 

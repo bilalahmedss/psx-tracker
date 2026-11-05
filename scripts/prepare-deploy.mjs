@@ -33,7 +33,7 @@ const env = {
   EODHD_QUOTE_MODE: local.EODHD_QUOTE_MODE || "eod",
   PRICE_REFRESH_MINUTES: local.PRICE_REFRESH_MINUTES || "30",
   PRICE_REFRESH_SCOPE: local.PRICE_REFRESH_SCOPE || "holdings",
-  EOD_PUBLISH_DELAY_MINUTES: local.EOD_PUBLISH_DELAY_MINUTES || "120",
+  EOD_CHECK_START: local.EOD_CHECK_START || "22:30",
   CRON_SECRET: previous.CRON_SECRET || randomBytes(32).toString("base64url"),
 };
 

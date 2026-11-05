@@ -1,7 +1,7 @@
 // When to refresh prices, and what the "Refresh prices" button and status line say.
 // Pure functions: the prices job and the pages both call these with the stored state.
 
-import { formatMinutes, getSchedule, lastCloseMinutes, marketStatus, previousTradingDay, pktParts, pktToDate, type CalendarData } from "./calendar";
+import { formatMinutes, getSchedule, isTradingDay, marketStatus, previousTradingDay, pktParts, pktToDate, type CalendarData } from "./calendar";
 import type { QuoteMode } from "./types";
 
 export type RefreshScope = "holdings" | "all";
@@ -14,15 +14,27 @@ export type RefreshConfig = {
   scope: RefreshScope;
   /** Gap after any refresh before the button works again. */
   cooldownMinutes: number;
-  /** End-of-day mode: first try for a day's closes this long after the close (EOD_PUBLISH_DELAY_MINUTES). */
-  eodDelayMinutes: number;
+  /** End-of-day mode: first check for a trading day's closes at this PKT time, minutes since midnight (EOD_CHECK_START). */
+  eodCheckStart: number;
 };
 
 export const COOLDOWN_MINUTES = 5;
 /** Intraday modes: one more refresh within this many minutes after the close, for final prices. */
 export const GRACE_MINUTES = 5;
 export const DEFAULT_INTERVAL_MINUTES = 30;
-export const DEFAULT_EOD_DELAY_MINUTES = 120;
+/** EODHD had the 5 Nov 2026 PSX closes by 22:40 PKT. */
+export const DEFAULT_EOD_CHECK_START = "22:30";
+/** End-of-day mode: scheduled checks for one day's closes, an hour apart, before giving up on that day. */
+export const EOD_MAX_ATTEMPTS = 3;
+export const EOD_RETRY_MINUTES = 60;
+
+/** "22:30" -> 1350 (PKT minutes since midnight). */
+export function readCheckStart(raw: string | undefined): number {
+  const v = (raw ?? "").trim() || DEFAULT_EOD_CHECK_START;
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(v);
+  if (!m) throw new Error(`EOD_CHECK_START must be a PKT time like 22:30, got "${raw}"`);
+  return Number(m[1]) * 60 + Number(m[2]);
+}
 
 function whole(name: string, raw: string | undefined, fallback: number, min: number): number {
   if (raw === undefined || raw.trim() === "") return fallback;
@@ -38,15 +50,18 @@ export function readRefreshConfig(env: Record<string, string | undefined>): Refr
     intervalMinutes: whole("PRICE_REFRESH_MINUTES", env.PRICE_REFRESH_MINUTES, DEFAULT_INTERVAL_MINUTES, 1),
     scope,
     cooldownMinutes: COOLDOWN_MINUTES,
-    eodDelayMinutes: whole("EOD_PUBLISH_DELAY_MINUTES", env.EOD_PUBLISH_DELAY_MINUTES, DEFAULT_EOD_DELAY_MINUTES, 0),
+    eodCheckStart: readCheckStart(env.EOD_CHECK_START),
   };
 }
 
-/** End-of-day mode: the latest trading day whose closes should be published by now. */
-export function latestPublishedDay(now: Date, cal: CalendarData, delayMinutes: number): string {
+/**
+ * End-of-day mode: the trading day whose closes we should have by now. Today once
+ * the check start has passed on a trading day; otherwise the trading day before
+ * (so checks after midnight still belong to the previous evening).
+ */
+export function latestCheckDay(now: Date, cal: CalendarData, checkStart: number): string {
   const { date, minutes } = pktParts(now);
-  const close = lastCloseMinutes(date, cal);
-  if (close !== null && minutes >= close + delayMinutes) return date;
+  if (isTradingDay(date, cal) && minutes >= checkStart) return date;
   return previousTradingDay(date, cal);
 }
 
@@ -55,6 +70,9 @@ export type RefreshState = {
   lastAttemptAt: Date | null;
   /** End-of-day mode: the day every tracked symbol has a close for. */
   dataDay: string | null;
+  /** End-of-day mode: scheduled checks made for this day's closes. */
+  eodAttemptDay?: string | null;
+  eodAttempts?: number;
 };
 
 export type RefreshInput = {
@@ -73,7 +91,7 @@ export type RefreshInput = {
   remaining: number | null;
 };
 
-export type SkipCode = "no_symbols" | "closed" | "interval" | "cooldown" | "up_to_date" | "limit";
+export type SkipCode = "no_symbols" | "closed" | "interval" | "cooldown" | "up_to_date" | "limit" | "gave_up";
 export type RefreshDecision =
   | { run: true; targetDay: string | null }
   | { run: false; code: SkipCode; message: string; retryAt?: Date };
@@ -97,12 +115,24 @@ export function decideRefresh(i: RefreshInput): RefreshDecision {
 
   let targetDay: string | null = null;
   if (i.mode === "eod") {
-    targetDay = latestPublishedDay(i.now, i.cal, i.config.eodDelayMinutes);
+    targetDay = latestCheckDay(i.now, i.cal, i.config.eodCheckStart);
     if (i.state.dataDay && i.state.dataDay >= targetDay) {
       return { run: false, code: "up_to_date", message: `Up to date: closing prices for ${shortDay(targetDay)}` };
     }
-    if (i.trigger === "manual" && minutesSince < i.config.cooldownMinutes) return wait("cooldown", i.config.cooldownMinutes);
-    if (i.trigger === "schedule" && minutesSince < i.config.intervalMinutes) return wait("interval", i.config.intervalMinutes);
+    if (i.trigger === "manual") {
+      // The button can always try again after the cooldown, even after scheduled checks gave up.
+      if (minutesSince < i.config.cooldownMinutes) return wait("cooldown", i.config.cooldownMinutes);
+    } else {
+      const attempts = i.state.eodAttemptDay === targetDay ? (i.state.eodAttempts ?? 0) : 0;
+      if (attempts >= EOD_MAX_ATTEMPTS) {
+        return {
+          run: false,
+          code: "gave_up",
+          message: `Gave up on closing prices for ${shortDay(targetDay)} after ${EOD_MAX_ATTEMPTS} checks; next check ${formatMinutes(i.config.eodCheckStart)} PKT on the next trading day`,
+        };
+      }
+      if (attempts > 0 && minutesSince < EOD_RETRY_MINUTES) return wait("interval", EOD_RETRY_MINUTES);
+    }
   } else if (i.trigger === "manual") {
     if (minutesSince < i.config.cooldownMinutes) return wait("cooldown", i.config.cooldownMinutes);
   } else {
@@ -153,7 +183,7 @@ export function priceStatusView(
   if (i.sourceId === "demo") suffix = "Demo data";
   else if (i.mode === "eod") {
     suffix = i.state.dataDay ? `closing prices ${shortDay(i.state.dataDay)}` : "closing prices";
-    const target = latestPublishedDay(i.now, i.cal, i.config.eodDelayMinutes);
+    const target = latestCheckDay(i.now, i.cal, i.config.eodCheckStart);
     // More than one trading day behind what should be published.
     stale = !i.state.dataDay || i.state.dataDay < previousTradingDay(target, i.cal);
   } else {

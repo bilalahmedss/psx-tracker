@@ -405,6 +405,9 @@ export const marketDataState = pgTable(
     /** End-of-day mode: the trading day whose closes every tracked symbol has. */
     dataDay: date("data_day"),
     symbolsSyncedAt: timestamp("symbols_synced_at", { withTimezone: true }),
+    /** End-of-day mode: the day the scheduled checks are for, and how many were made (max 3). */
+    eodAttemptDay: date("eod_attempt_day"),
+    eodAttempts: integer("eod_attempts").notNull().default(0),
     message: text("message"),
     updatedAt: updatedAt(),
   },
