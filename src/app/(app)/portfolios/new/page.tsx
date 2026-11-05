@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { FormSkeleton } from "@/components/skeleton";
 import { requireUser } from "@/lib/auth";
-import { getFormOptions } from "@/lib/portfolio/queries";
+import { preferredBroker } from "@/lib/portfolio/broker-default";
+import { getFormOptions, listPortfolios } from "@/lib/portfolio/queries";
 import { PortfolioForm } from "../portfolio-form";
 import { createPortfolio } from "../actions";
 
@@ -14,7 +15,7 @@ export default function NewPortfolioPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">New portfolio</h1>
         <p className="text-sm text-muted-foreground">
-          PSX defaults are filled in. Change anything that differs on your broker&apos;s contract notes.
+          Your broker&apos;s fees are filled in. Change anything that differs on your contract notes.
         </p>
       </div>
       <Suspense fallback={<FormSkeleton />}>
@@ -26,7 +27,10 @@ export default function NewPortfolioPage() {
 
 async function NewPortfolioForm() {
   const { supabase } = await requireUser();
-  const { brokers, defaults } = await getFormOptions(supabase);
+  const [{ brokers, defaults }, mine] = await Promise.all([getFormOptions(supabase), listPortfolios(supabase)]);
+  // Default portfolio first, then newest first.
+  const ordered = [...mine.filter((p) => p.isDefault), ...mine.filter((p) => !p.isDefault).reverse()];
+  const broker = preferredBroker(brokers, ordered.map((p) => p.brokerName));
   return (
     <PortfolioForm
       action={createPortfolio}
@@ -35,12 +39,12 @@ async function NewPortfolioForm() {
       defaults={defaults}
       initial={{
         name: "",
-        brokerId: "",
+        brokerId: broker?.id ?? "",
         taxStatus: "filer",
         statusEffectiveFrom: "",
         isDefault: false,
         nonFilerRate: defaults.cgt.nonFilerRate,
-        ...defaults.fees,
+        ...(broker?.fees ?? defaults.fees),
       }}
     />
   );

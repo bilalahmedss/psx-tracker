@@ -14,7 +14,9 @@ import {
 // All reads go through the user's supabase-js client, so RLS applies.
 // Explicit FK hints avoid PostgREST ambiguity (brokers also link to fee_profiles).
 
-const FEE_COLS = "threshold, pct_above, per_share_below, fed_pct, min_fee";
+const FEE_COLS = "threshold, pct_above, per_share_below, fed_pct, min_fee, cdc_per_trade, psx_levy_pct, secp_levy_pct, nccpl_levy_pct";
+/** The seeded system profile; other system profiles belong to specific brokers. */
+const PSX_DEFAULT_PROFILE = "PSX default";
 const CGT_COLS = "filer_rate, non_filer_rate";
 
 export type BrokerOption = { id: string; name: string; fees: FeeFormValues };
@@ -106,7 +108,7 @@ export async function getFormOptions(supabase: SupabaseClient): Promise<{
       .order("sort_order")
       .order("name")
       .overrideTypes<{ id: string; name: string; fee_profiles: FeeProfileRow | null }[], { merge: false }>(),
-    supabase.from("fee_profiles").select(FEE_COLS).is("user_id", null).limit(1).maybeSingle<FeeProfileRow>(),
+    supabase.from("fee_profiles").select(FEE_COLS).is("user_id", null).eq("name", PSX_DEFAULT_PROFILE).limit(1).maybeSingle<FeeProfileRow>(),
     supabase.from("cgt_rules").select(CGT_COLS).is("user_id", null).limit(1).maybeSingle<CgtRuleRow>(),
   ]);
   if (brokersRes.error) throw new Error(`Could not load brokers: ${brokersRes.error.message}`);

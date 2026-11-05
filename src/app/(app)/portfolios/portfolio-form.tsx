@@ -39,6 +39,8 @@ export function PortfolioForm({ action, submitLabel, brokers, defaults, initial,
   const [state, formAction, pending] = useActionState(action, undefined);
   // Controlled inputs so values survive a failed submit (React resets uncontrolled forms).
   const [values, setValues] = useState<PortfolioFormValues>(initial);
+  // A preselected broker shows as a name; the list only appears to pick a different one.
+  const [choosingBroker, setChoosingBroker] = useState(initial.brokerId === "");
   const errors: FieldErrors = state?.fieldErrors ?? {};
   const statusChanged = currentStatus !== undefined && values.taxStatus !== currentStatus;
 
@@ -52,6 +54,8 @@ export function PortfolioForm({ action, submitLabel, brokers, defaults, initial,
     const broker = brokers.find((b) => b.id === brokerId);
     applyFees(broker?.fees ?? defaults.fees);
   };
+
+  const selectedBroker = brokers.find((b) => b.id === values.brokerId);
 
   const field = (name: PortfolioField) => ({
     id: name,
@@ -78,16 +82,30 @@ export function PortfolioForm({ action, submitLabel, brokers, defaults, initial,
               onChange={(e) => set("name", e.target.value)}
             />
           </Field>
-          <Field label="Broker" name="brokerId" error={errors.brokerId} hint="Choosing a broker fills in its default fees.">
-            <NativeSelect {...field("brokerId")} value={values.brokerId} onChange={(e) => onBrokerChange(e.target.value)}>
-              <option value="">No broker</option>
-              {brokers.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
+          {choosingBroker || !selectedBroker ? (
+            <Field label="Broker" name="brokerId" error={errors.brokerId} hint="Choosing a broker fills in its default fees.">
+              <NativeSelect {...field("brokerId")} value={values.brokerId} onChange={(e) => onBrokerChange(e.target.value)}>
+                <option value="">No broker</option>
+                {brokers.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </Field>
+          ) : (
+            <div className="grid gap-1.5">
+              <span className="text-sm font-medium">Broker</span>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-sm">{selectedBroker.name}</span>
+                <input type="hidden" name="brokerId" value={values.brokerId} />
+                <Button type="button" variant="outline" size="sm" onClick={() => setChoosingBroker(true)}>
+                  Change broker
+                </Button>
+              </div>
+              {errors.brokerId ? <p className="text-xs text-destructive">{errors.brokerId}</p> : null}
+            </div>
+          )}
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -171,7 +189,8 @@ export function PortfolioForm({ action, submitLabel, brokers, defaults, initial,
           <CardTitle>Broker fees</CardTitle>
           <CardDescription>
             Commission is a percentage of trade value for shares priced at or above the threshold, and a fixed amount per
-            share below it. Sales tax is charged on the commission.
+            share below it. Sales tax is charged on the commission. CDC is charged per trade, and the PSX, SECP and NCCPL
+            levies are percentages of trade value, their sales tax included.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -195,7 +214,29 @@ export function PortfolioForm({ action, submitLabel, brokers, defaults, initial,
           <Field label="Minimum commission" name="minFee" prefix="Rs" error={errors.minFee} hint="Per trade; 0 for none">
             <Input {...field("minFee")} inputMode="decimal" value={values.minFee} onChange={(e) => set("minFee", e.target.value)} />
           </Field>
-          <div className="flex items-end">
+          <Field label="CDC charge" name="cdcPerTrade" prefix="Rs" error={errors.cdcPerTrade} hint="Per trade">
+            <Input {...field("cdcPerTrade")} inputMode="decimal" value={values.cdcPerTrade} onChange={(e) => set("cdcPerTrade", e.target.value)} />
+          </Field>
+          <Field label="PSX levy" name="psxLevyPct" suffix="%" error={errors.psxLevyPct} hint="Of trade value">
+            <Input {...field("psxLevyPct")} inputMode="decimal" value={values.psxLevyPct} onChange={(e) => set("psxLevyPct", e.target.value)} />
+          </Field>
+          <Field label="SECP levy" name="secpLevyPct" suffix="%" error={errors.secpLevyPct} hint="Of trade value">
+            <Input {...field("secpLevyPct")} inputMode="decimal" value={values.secpLevyPct} onChange={(e) => set("secpLevyPct", e.target.value)} />
+          </Field>
+          <Field label="NCCPL levy" name="nccplLevyPct" suffix="%" error={errors.nccplLevyPct} hint="Of trade value">
+            <Input
+              {...field("nccplLevyPct")}
+              inputMode="decimal"
+              value={values.nccplLevyPct}
+              onChange={(e) => set("nccplLevyPct", e.target.value)}
+            />
+          </Field>
+          <div className="flex flex-wrap items-end gap-2 sm:col-span-2">
+            {selectedBroker ? (
+              <Button type="button" variant="outline" size="sm" onClick={() => applyFees(selectedBroker.fees)}>
+                Reset to {selectedBroker.name} fees
+              </Button>
+            ) : null}
             <Button type="button" variant="outline" size="sm" onClick={() => applyFees(defaults.fees)}>
               Reset to PSX defaults
             </Button>

@@ -51,6 +51,10 @@ export const portfolioFormSchema = z.object({
   perShareBelow: decimalField({ label: "Commission per share", max: "100", maxDp: 4 }),
   fedPct: decimalField({ label: "Sales tax on commission", max: "100", maxDp: 4, exclusiveMax: true }),
   minFee: decimalField({ label: "Minimum fee", max: "100000", maxDp: 2 }),
+  cdcPerTrade: decimalField({ label: "CDC charge", max: "10000", maxDp: 2 }),
+  psxLevyPct: decimalField({ label: "PSX levy", max: "0.3", maxDp: 6 }),
+  secpLevyPct: decimalField({ label: "SECP levy", max: "0.3", maxDp: 6 }),
+  nccplLevyPct: decimalField({ label: "NCCPL levy", max: "0.3", maxDp: 6 }),
   isDefault: z
     .string()
     .optional()
@@ -74,6 +78,10 @@ export type PortfolioRpcArgs = {
   p_fed_pct: string;
   p_min_fee: string;
   p_is_default: boolean;
+  p_cdc_per_trade: string;
+  p_psx_levy_pct: string;
+  p_secp_levy_pct: string;
+  p_nccpl_levy_pct: string;
 };
 
 export function toRpcArgs(form: PortfolioForm): PortfolioRpcArgs {
@@ -90,6 +98,10 @@ export function toRpcArgs(form: PortfolioForm): PortfolioRpcArgs {
     p_fed_pct: percentToFraction(form.fedPct),
     p_min_fee: form.minFee,
     p_is_default: form.isDefault,
+    p_cdc_per_trade: form.cdcPerTrade,
+    p_psx_levy_pct: percentToFraction(form.psxLevyPct),
+    p_secp_levy_pct: percentToFraction(form.secpLevyPct),
+    p_nccpl_levy_pct: percentToFraction(form.nccplLevyPct),
   };
 }
 

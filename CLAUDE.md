@@ -54,7 +54,8 @@ Drizzle connects with `DATABASE_URL` as a privileged Postgres role and **bypasse
 
 ## Portfolio engine
 
-- `src/lib/engine/` is pure TypeScript with exact decimals: fees, FIFO lots, P&L, CGT, dividends, cash ledger. `buildPortfolio()` rebuilds everything from transactions on every request; derived figures are never stored by user code.
+- `src/lib/engine/` is pure TypeScript with exact decimals: fees, FIFO lots, P&L, CGT, dividends, cash ledger.
+- Fees: commission (0.15% or Rs 0.03/share below Rs 20), sales tax on it, flat CDC per trade, and PSX/SECP/NCCPL levies on trade value; each rounded half up to the paisa on its own. Worked examples from real Nafa orders are in `fees.test.ts`. A new portfolio preselects the user's existing broker, else Chase Securities (Nafa) (`broker-default.ts`). `buildPortfolio()` rebuilds everything from transactions on every request; derived figures are never stored by user code.
 - All tax rates live in one dated rule set, `src/lib/engine/tax-rules.ts` (last checked Nov 2026, Finance Act 2026). Add new dated brackets for budget changes; don't edit old ones.
 - Filer status is dated (`portfolio_tax_status`); the filer CGT rate needs ATL status on both buy and sell dates. The non-filer rate for post-July-2024 acquisitions is user-entered per portfolio (min 15%).
 - Cash ledger: only manual entries are stored in `cash_entries`; trade and dividend lines are derived.
@@ -86,7 +87,7 @@ A user owns portfolios; a portfolio owns transactions. **Holdings, lots and real
 | User | id, email, name, auth provider, locale, theme, prefs (JSON) | has many Portfolio, Alert, Watchlist, ImportJob, DashboardLayout |
 | Portfolio | id, user_id, name, broker_id, tax_status, cgt_rule_id, fee_profile_id, sync_address, is_default | belongs to User; has many Transaction, CashEntry, Snapshot |
 | Broker | id, name, default fee profile, parser keys, sender emails | used by Portfolio, ImportJob |
-| FeeProfile | id, threshold, pct_above, per_share_below, fed_pct, min_fee | used by Portfolio (user-editable copy) |
+| FeeProfile | id, threshold, pct_above, per_share_below, fed_pct, min_fee, cdc_per_trade, psx/secp/nccpl_levy_pct | used by Portfolio (user-editable copy); system rows: "PSX default", one per broker with its own charges (e.g. Chase Securities (Nafa)) |
 | Security | symbol, name, sector, is_shariah, is_etf, shares_out, free_float | has many Price, Dividend (corporate), Notice |
 | Price | symbol, ts, open, high, low, close, volume | belongs to Security |
 | Transaction | id, portfolio_id, symbol, type (buy, sell, bonus, split, transfer_in/out), qty, price, fee, tax, trade_date, settle_date, source, import_job_id, affects_cash | belongs to Portfolio; feeds Lot |

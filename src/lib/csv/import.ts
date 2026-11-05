@@ -144,11 +144,12 @@ function positive(value: string, label: string, wholeNumber = false): string {
 
 const fmt = (v: string) => new Decimal(v).toFixed(2);
 
-type AutoFees = { commission: { toFixed(dp: number): string }; tax: { toFixed(dp: number): string } };
+type AutoFees = { commission: { toFixed(dp: number): string }; tax: { toFixed(dp: number): string }; other: { toFixed(dp: number): string } };
 
 /**
  * Charges for a trade row. The file's fees are used as-is: the fee profile only
- * fills in when commission and sales_tax are both blank. An all-in total (e.g.
+ * fills in when commission and sales_tax are both blank (and then also fills
+ * other_charges, e.g. CDC and levies, if that is blank too). An all-in total (e.g.
  * SmartPSX's broker_fees) is stored as the commission with no separate tax.
  */
 export function tradeCharges(input: {
@@ -167,7 +168,7 @@ export function tradeCharges(input: {
   }
   if (commission === null && salesTax === null) {
     const a = input.auto();
-    return { fee: a.commission.toFixed(2), tax: a.tax.toFixed(2), other: other ?? "0" };
+    return { fee: a.commission.toFixed(2), tax: a.tax.toFixed(2), other: other ?? a.other.toFixed(2) };
   }
   // At least one of commission/sales_tax given: never top up the other from the profile.
   return { fee: commission ?? "0", tax: salesTax ?? "0", other: other ?? "0" };

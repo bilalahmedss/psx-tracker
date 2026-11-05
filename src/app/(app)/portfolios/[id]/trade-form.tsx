@@ -69,17 +69,18 @@ export function TradeForm({
   const auto = useMemo(() => {
     if (!isDecimalString(v.qty) || !isDecimalString(v.price)) return null;
     const f = computeFees(feeProfile, v.qty, v.price);
-    return { fee: f.commission.toFixed(2), tax: f.tax.toFixed(2) };
+    return { fee: f.commission.toFixed(2), tax: f.tax.toFixed(2), other: f.other.toFixed(2) };
   }, [feeProfile, v.qty, v.price]);
 
   const set = <K extends keyof TradeFormValues>(key: K, value: TradeFormValues[K]) =>
     setV((prev) => {
       const next = { ...prev, [key]: value };
-      // Keep commission and tax in step with quantity and price until the user edits them.
+      // Keep commission, tax and other charges in step with quantity and price until the user edits them.
       if (!feesEdited && (key === "qty" || key === "price") && isDecimalString(next.qty) && isDecimalString(next.price)) {
         const f = computeFees(feeProfile, next.qty, next.price);
         next.fee = f.commission.toFixed(2);
         next.tax = f.tax.toFixed(2);
+        next.otherCharges = f.other.toFixed(2);
       }
       return next;
     });
@@ -189,20 +190,23 @@ export function TradeForm({
                 }}
               />
             </FormField>
-            <FormField label="Other charges" name="otherCharges" prefix="Rs" error={errors.otherCharges} hint="CDC, NCCPL, SECP etc.">
+            <FormField label="Other charges" name="otherCharges" prefix="Rs" error={errors.otherCharges} hint="CDC, PSX, SECP, NCCPL">
               <Input
                 {...fieldProps("otherCharges", errors)}
                 inputMode="decimal"
                 placeholder="0"
                 value={v.otherCharges}
-                onChange={(e) => set("otherCharges", e.target.value)}
+                onChange={(e) => {
+                  setFeesEdited(true);
+                  set("otherCharges", e.target.value);
+                }}
               />
             </FormField>
           </div>
           <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
             {feesEdited ? (
               <>
-                <span>Commission and tax entered manually.</span>
+                <span>Charges entered manually.</span>
                 {auto ? (
                   <Button
                     type="button"
@@ -210,15 +214,15 @@ export function TradeForm({
                     size="sm"
                     onClick={() => {
                       setFeesEdited(false);
-                      setV((p) => ({ ...p, fee: auto.fee, tax: auto.tax }));
+                      setV((p) => ({ ...p, fee: auto.fee, tax: auto.tax, otherCharges: auto.other }));
                     }}
                   >
-                    Recalculate from fee profile (Rs {auto.fee} + {auto.tax})
+                    Recalculate from fee profile (Rs {auto.fee} + {auto.tax} + {auto.other})
                   </Button>
                 ) : null}
               </>
             ) : (
-              <span>Commission and tax are calculated from this portfolio&apos;s fee profile. Edit them to match your contract note.</span>
+              <span>Charges are calculated from this portfolio&apos;s fee profile. Edit them to match your contract note.</span>
             )}
           </div>
 

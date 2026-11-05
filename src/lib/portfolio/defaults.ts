@@ -7,6 +7,10 @@ export type FeeFormValues = {
   perShareBelow: string;
   fedPct: string; // percent
   minFee: string;
+  cdcPerTrade: string; // Rs per trade
+  psxLevyPct: string; // percent of trade value, tax included
+  secpLevyPct: string; // percent
+  nccplLevyPct: string; // percent
 };
 
 export type CgtFormValues = {
@@ -21,6 +25,10 @@ export type FeeProfileRow = {
   per_share_below: string | number;
   fed_pct: string | number;
   min_fee: string | number;
+  cdc_per_trade?: string | number | null;
+  psx_levy_pct?: string | number | null;
+  secp_levy_pct?: string | number | null;
+  nccpl_levy_pct?: string | number | null;
 };
 
 export type CgtRuleRow = {
@@ -38,6 +46,10 @@ export const PSX_DEFAULT_FEES: FeeFormValues = {
   perShareBelow: "0.03",
   fedPct: "15",
   minFee: "0",
+  cdcPerTrade: "0",
+  psxLevyPct: "0",
+  secpLevyPct: "0",
+  nccplLevyPct: "0",
 };
 
 /** CGT for shares acquired on or after 1 Jul 2024. Estimates only. */
@@ -53,6 +65,10 @@ export function feeRowToForm(row: FeeProfileRow): FeeFormValues {
     perShareBelow: trimDecimal(row.per_share_below),
     fedPct: fractionToPercent(row.fed_pct),
     minFee: trimDecimal(row.min_fee),
+    cdcPerTrade: trimDecimal(row.cdc_per_trade ?? 0),
+    psxLevyPct: fractionToPercent(row.psx_levy_pct ?? 0),
+    secpLevyPct: fractionToPercent(row.secp_levy_pct ?? 0),
+    nccplLevyPct: fractionToPercent(row.nccpl_levy_pct ?? 0),
   };
 }
 

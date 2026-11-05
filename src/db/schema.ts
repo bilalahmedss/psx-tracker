@@ -44,6 +44,8 @@ const qty = (name: string) => numeric(name, { precision: 18, scale: 4 });
 const price = (name: string) => numeric(name, { precision: 14, scale: 4 });
 /** Rates stored as fractions: 0.15% => 0.0015, 15% => 0.15. */
 const rate = (name: string) => numeric(name, { precision: 10, scale: 6 });
+/** Small levies on trade value as fractions: 0.00414% => 0.0000414. */
+const levy = (name: string) => numeric(name, { precision: 12, scale: 10 });
 
 const isOwner = sql`user_id = ${authUid}`;
 
@@ -163,11 +165,21 @@ export const feeProfiles = pgTable(
     fedPct: rate("fed_pct").notNull(),
     /** Minimum commission per trade (Rs). */
     minFee: money("min_fee").notNull().default("0"),
+    /** Flat CDC charge per trade (Rs). */
+    cdcPerTrade: money("cdc_per_trade").notNull().default("0"),
+    /** PSX, SECP and NCCPL levies as fractions of trade value, their sales tax included. */
+    psxLevyPct: levy("psx_levy_pct").notNull().default("0"),
+    secpLevyPct: levy("secp_levy_pct").notNull().default("0"),
+    nccplLevyPct: levy("nccpl_levy_pct").notNull().default("0"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [
     index("fee_profiles_user_id_idx").on(t.userId),
+    check(
+      "fee_profiles_charges_sane",
+      sql`cdc_per_trade >= 0 and cdc_per_trade <= 10000 and psx_levy_pct >= 0 and secp_levy_pct >= 0 and nccpl_levy_pct >= 0 and psx_levy_pct + secp_levy_pct + nccpl_levy_pct < 0.01`,
+    ),
     check("fee_profiles_non_negative", sql`threshold >= 0 and pct_above >= 0 and per_share_below >= 0 and fed_pct >= 0 and min_fee >= 0`),
     check("fee_profiles_sane_rates", sql`pct_above < 0.1 and fed_pct < 1`),
     ...rulePolicies("fee_profiles"),

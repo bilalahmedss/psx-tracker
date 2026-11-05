@@ -220,8 +220,9 @@ try {
   const { data: brokers } = await b.client.from("brokers").select("id");
   check("signed-in users can read brokers", (brokers?.length ?? 0) > 0);
 
-  const { data: sysFee } = await b.client.from("fee_profiles").select("id").is("user_id", null);
-  check("signed-in users can read the PSX default fee profile", sysFee?.length === 1);
+  const { data: sysFee } = await b.client.from("fee_profiles").select("name").is("user_id", null);
+  const sysNames = (sysFee ?? []).map((f) => f.name);
+  check("signed-in users can read the system fee profiles", sysNames.includes("PSX default") && sysNames.includes("Chase Securities (Nafa)"));
 
   const { data: sysFeeUpdated } = await b.client.from("fee_profiles").update({ pct_above: "0" }).is("user_id", null).select();
   check("users can't edit the PSX default fee profile", sysFeeUpdated?.length === 0);
@@ -301,6 +302,55 @@ try {
   });
   check("the broker survives an edit", (await brokerOf(brokerPid)) === "JS Global Capital");
   await a.client.rpc("delete_portfolio", { p_id: brokerPid });
+
+  // Fee profiles carry CDC and levies (Chase/Nafa). The system Chase profile is readable;
+  // a portfolio stores the charges it is given; an update that omits them keeps them.
+  const { data: chase } = await a.client
+    .from("brokers")
+    .select("id, fee_profiles!brokers_default_fee_profile_id_fee_profiles_id_fk(cdc_per_trade, psx_levy_pct)")
+    .eq("name", "Chase Securities (Nafa)")
+    .single();
+  check("users can read the Chase (Nafa) broker fees", Number(chase?.fee_profiles?.cdc_per_trade) === 5 && Number(chase?.fee_profiles?.psx_levy_pct) === 0.0000414);
+  const CHARGES = { p_cdc_per_trade: "5", p_psx_levy_pct: "0.0000414", p_secp_levy_pct: "0.00000575", p_nccpl_levy_pct: "0.0000322" };
+  const { data: chargesPid, error: chargesErr } = await a.client.rpc("create_portfolio", {
+    p_name: "Charges check",
+    p_broker_id: chase?.id,
+    p_is_default: false,
+    ...PSX_FEES,
+    ...CHARGES,
+  });
+  const chargesOf = async (pid) => {
+    const { data } = await a.client
+      .from("portfolios")
+      .select("fee_profiles!portfolios_fee_profile_id_fee_profiles_id_fk(cdc_per_trade, psx_levy_pct, secp_levy_pct, nccpl_levy_pct)")
+      .eq("id", pid)
+      .single();
+    const f = data?.fee_profiles;
+    return f ? [f.cdc_per_trade, f.psx_levy_pct, f.secp_levy_pct, f.nccpl_levy_pct].map(Number).join(",") : null;
+  };
+  const expected = "5,0.0000414,0.00000575,0.0000322";
+  check("CDC and levies are saved on create", !chargesErr && (await chargesOf(chargesPid)) === expected, chargesErr?.message);
+  const { error: oldStyleErr } = await a.client.rpc("update_portfolio", {
+    p_id: chargesPid,
+    p_name: "Charges check",
+    p_broker_id: chase?.id,
+    p_is_default: false,
+    ...PSX_FEES,
+    p_status_effective_from: null,
+  });
+  check("an update without the charge fields keeps them", !oldStyleErr && (await chargesOf(chargesPid)) === expected, oldStyleErr?.message);
+  const { error: badLevyErr } = await a.client.rpc("update_portfolio", {
+    p_id: chargesPid,
+    p_name: "Charges check",
+    p_broker_id: chase?.id,
+    p_is_default: false,
+    ...PSX_FEES,
+    ...CHARGES,
+    p_psx_levy_pct: "0.02",
+    p_status_effective_from: null,
+  });
+  check("absurd levies are rejected", Boolean(badLevyErr), "update succeeded");
+  await a.client.rpc("delete_portfolio", { p_id: chargesPid });
 
   const { data: startStatus } = await a.client.from("portfolio_tax_status").select("status, effective_from").eq("portfolio_id", aPortfolioId);
   check("a new portfolio starts with one status row 'from the start'", startStatus?.length === 1 && startStatus[0].effective_from === "1900-01-01");

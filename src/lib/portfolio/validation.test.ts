@@ -36,6 +36,10 @@ describe("parsePortfolioForm", () => {
       p_fed_pct: "0.15",
       p_min_fee: "0",
       p_is_default: true,
+      p_cdc_per_trade: "0",
+      p_psx_levy_pct: "0",
+      p_secp_levy_pct: "0",
+      p_nccpl_levy_pct: "0",
     });
   });
 
@@ -81,6 +85,9 @@ describe("parsePortfolioForm", () => {
     ["perShareBelow", "1e2"],
     ["minFee", "1.234"], // more than 2 dp
     ["minFee", "100001"],
+    ["cdcPerTrade", "5.001"],
+    ["psxLevyPct", "0.0041444"], // more than 6 dp
+    ["nccplLevyPct", "0.31"],
   ])("rejects %s = %j", (field, value) => {
     const r = parsePortfolioForm(form({ [field]: value }));
     expect(r.ok).toBe(false);
@@ -96,6 +103,17 @@ describe("parsePortfolioForm", () => {
   it("treats a blank status date as not given", () => {
     const r = parsePortfolioForm(form({ statusEffectiveFrom: "" }));
     expect(r.ok && r.data.statusEffectiveFrom).toBeNull();
+  });
+
+  it("converts the Chase (Nafa) charges: CDC Rs 5 and levies in percent", () => {
+    const r = parsePortfolioForm(form({ cdcPerTrade: "5", psxLevyPct: "0.00414", secpLevyPct: "0.000575", nccplLevyPct: "0.00322" }));
+    if (!r.ok) throw new Error(JSON.stringify(r.fieldErrors));
+    expect(toRpcArgs(r.data)).toMatchObject({
+      p_cdc_per_trade: "5",
+      p_psx_levy_pct: "0.0000414",
+      p_secp_levy_pct: "0.00000575",
+      p_nccpl_levy_pct: "0.0000322",
+    });
   });
 
   it("accepts zero fees (e.g. a zero-commission promo)", () => {
@@ -114,6 +132,19 @@ describe("DB row -> form values", () => {
         min_fee: "0.0000",
       }),
     ).toEqual(PSX_DEFAULT_FEES);
+    expect(
+      feeRowToForm({
+        threshold: "20.0000",
+        pct_above: "0.001500",
+        per_share_below: "0.0300",
+        fed_pct: "0.150000",
+        min_fee: "0.0000",
+        cdc_per_trade: "5.0000",
+        psx_levy_pct: "0.0000414000",
+        secp_levy_pct: "0.0000057500",
+        nccpl_levy_pct: "0.0000322000",
+      }),
+    ).toMatchObject({ cdcPerTrade: "5", psxLevyPct: "0.00414", secpLevyPct: "0.000575", nccplLevyPct: "0.00322" });
     expect(cgtRowToForm({ filer_rate: "0.150000", non_filer_rate: "0.300000" })).toEqual(PSX_DEFAULT_CGT);
   });
 });

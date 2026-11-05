@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { csvCell, parseCsv, toCsv } from "./csv";
 import { TEMPLATE_CSV, parseDate, parseImport, parseNumber, tradeCharges, type ImportContext } from "./import";
+import { NO_EXTRA_CHARGES } from "@/lib/engine/fees";
 
 describe("parseCsv", () => {
   it("handles quotes, escaped quotes, commas and CRLF", () => {
@@ -56,7 +57,7 @@ describe("parseDate / parseNumber", () => {
 
 const ctx: ImportContext = {
   today: "2026-11-05",
-  feeProfile: { threshold: "20", pctAbove: "0.0015", perShareBelow: "0.03", fedPct: "0.15", minFee: "0" },
+  feeProfile: { threshold: "20", pctAbove: "0.0015", perShareBelow: "0.03", fedPct: "0.15", minFee: "0", ...NO_EXTRA_CHARGES },
   taxHistory: [{ status: "filer", effectiveFrom: "1900-01-01" }],
   knownSymbols: new Set(["OGDC", "HBL"]),
 };
@@ -158,14 +159,19 @@ describe("parseImport: SmartPSX export format", () => {
 });
 
 describe("tradeCharges (file fees used as-is)", () => {
-  const auto = () => ({ commission: { toFixed: () => "75.00" }, tax: { toFixed: () => "11.25" } });
+  const auto = () => ({ commission: { toFixed: () => "75.00" }, tax: { toFixed: () => "11.25" }, other: { toFixed: () => "0.00" } });
   it("fills commission and tax from the profile only when both are blank", () => {
-    expect(tradeCharges({ commission: null, salesTax: null, other: null, total: null, auto })).toEqual({ fee: "75.00", tax: "11.25", other: "0" });
+    expect(tradeCharges({ commission: null, salesTax: null, other: null, total: null, auto })).toEqual({ fee: "75.00", tax: "11.25", other: "0.00" });
     expect(tradeCharges({ commission: null, salesTax: null, other: "5", total: null, auto })).toEqual({ fee: "75.00", tax: "11.25", other: "5" });
   });
   it("never tops up a given commission with profile tax (the MEBL/SYS bug)", () => {
     expect(tradeCharges({ commission: "9.04", salesTax: null, other: null, total: null, auto })).toEqual({ fee: "9.04", tax: "0", other: "0" });
     expect(tradeCharges({ commission: null, salesTax: "1.50", other: null, total: null, auto })).toEqual({ fee: "0", tax: "1.50", other: "0" });
+  });
+  it("fills other charges (CDC + levies) from the profile only with the rest", () => {
+    const chase = () => ({ commission: { toFixed: () => "3.36" }, tax: { toFixed: () => "0.50" }, other: { toFixed: () => "5.17" } });
+    expect(tradeCharges({ commission: null, salesTax: null, other: null, total: null, auto: chase })).toEqual({ fee: "3.36", tax: "0.50", other: "5.17" });
+    expect(tradeCharges({ commission: "3.36", salesTax: "0.50", other: null, total: null, auto: chase })).toEqual({ fee: "3.36", tax: "0.50", other: "0" });
   });
   it("rejects a total alongside separate fee columns", () => {
     expect(() => tradeCharges({ commission: "1", salesTax: null, other: null, total: "2", auto })).toThrow(/either broker_fees/);

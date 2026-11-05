@@ -172,6 +172,10 @@ export function feeProfileOf(book: PortfolioBook): FeeProfile {
     perShareBelow: f.perShareBelow,
     fedPct: percentToFraction(f.fedPct),
     minFee: f.minFee,
+    cdcPerTrade: f.cdcPerTrade,
+    psxLevyPct: percentToFraction(f.psxLevyPct),
+    secpLevyPct: percentToFraction(f.secpLevyPct),
+    nccplLevyPct: percentToFraction(f.nccplLevyPct),
   };
 }
 
